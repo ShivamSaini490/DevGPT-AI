@@ -64,6 +64,27 @@ ALPHA_VANTAGE_API_KEY = _usable_secret("ALPHA_VANTAGE_API_KEY")
 OPENWEATHER_API_KEY = _usable_secret("OPENWEATHER_API_KEY")
 FINNHUB_API_KEY = _usable_secret("FINNHUB_API_KEY")
 
+# Optional integrations used by the chat "+" menu.
+GITHUB_TOKEN = _usable_secret("GITHUB_TOKEN")
+FIGMA_TOKEN = _usable_secret("FIGMA_TOKEN")
+# Groq vision model used to read attached photos and sketches.
+VISION_MODEL = (
+    os.getenv("VISION_MODEL") or "qwen/qwen3.8-27b"
+)
+# Text-to-image endpoint; "{prompt}" is replaced with the URL-encoded prompt.
+IMAGE_GENERATION_URL = os.getenv(
+    "IMAGE_GENERATION_URL",
+    "https://image.pollinations.ai/prompt/{prompt}"
+    "?width=1024&height=1024&nologo=true&seed={seed}",
+)
+# Groq accepts base64 images up to 4 MB.
+MAX_IMAGE_MB = int(os.getenv("MAX_IMAGE_MB", "4"))
+DEEP_RESEARCH_CONTEXT_TOKENS = int(
+    os.getenv("DEEP_RESEARCH_CONTEXT_TOKENS", "8000")
+)
+GITHUB_API_URL = "https://api.github.com"
+FIGMA_API_URL = "https://api.figma.com/v1"
+
 POSTGRES_HOST = os.getenv("POSTGRES_HOST", "127.0.0.1")
 POSTGRES_PORT = int(os.getenv("POSTGRES_PORT", "5435"))
 POSTGRES_DB = os.getenv("POSTGRES_DB", "devgpt")

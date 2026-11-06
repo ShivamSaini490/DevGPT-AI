@@ -14,8 +14,41 @@ class Conversation(Base):
     thread_id = Column(String, unique=True, index=True)
     client_id = Column(String, nullable=True, index=True)
     title = Column(String, default="New Chat")
+    project_id = Column(String, nullable=True, index=True)
     created_at = Column(DateTime, default=utc_now_naive)
     updated_at = Column(DateTime, default=utc_now_naive)
+
+
+class Project(Base):
+    """A named workspace: its instructions apply to every chat inside it."""
+
+    __tablename__ = "projects"
+
+    id = Column(String, primary_key=True)
+    client_id = Column(String, nullable=False, index=True)
+    name = Column(String, nullable=False)
+    instructions = Column(Text, nullable=False, default="")
+    created_at = Column(DateTime, default=utc_now_naive)
+    updated_at = Column(DateTime, default=utc_now_naive)
+
+
+class UploadedFile(Base):
+    """A document or image a client added to a chat (also the "library")."""
+
+    __tablename__ = "uploaded_files"
+
+    id = Column(String, primary_key=True)
+    client_id = Column(String, nullable=False, index=True)
+    thread_id = Column(String, nullable=False, index=True)
+    filename = Column(String, nullable=False)
+    stored_name = Column(String, nullable=False)
+    kind = Column(String, nullable=False)  # "document" | "image"
+    mime_type = Column(String, nullable=False)
+    size = Column(Integer, nullable=False, default=0)
+    chunks = Column(Integer, nullable=False, default=0)
+    # "upload", "sketch" or "generated"
+    origin = Column(String, nullable=False, default="upload")
+    created_at = Column(DateTime, default=utc_now_naive)
 
 
 class ChatMessage(Base):
@@ -25,6 +58,7 @@ class ChatMessage(Base):
     thread_id = Column(String, index=True)
     role = Column(String)
     content = Column(Text)
+    attachments = Column(JSONB, nullable=True)
     created_at = Column(DateTime, default=utc_now_naive)
 
 

@@ -14,17 +14,26 @@ from langgraph.prebuilt import ToolNode, tools_condition
 from psycopg.rows import dict_row
 from psycopg_pool import ConnectionPool
 
-from app.agents.prompts import SYSTEM_PROMPT
+from app.agents.prompts import SYSTEM_PROMPT, build_system_prompt  # noqa: F401
+from app.schemas.chat import CHAT_MODES
 from app.core.config import (
+    DEEP_RESEARCH_CONTEXT_TOKENS,
     DEFAULT_GROQ_MODEL,
     LANGGRAPH_DATABASE_URL,
     MAX_CONTEXT_TOKENS,
     MAX_TOOL_OUTPUT_CHARS,
 )
-from app.tools import tools
+from app.tools import all_tools, tools, tools_for_mode
 
 
 DEFAULT_MODEL = DEFAULT_GROQ_MODEL
+
+
+
+class AgentState(MessagesState, total=False):
+    # Set on every request; they are not part of the conversation itself.
+    mode: str
+    instructions: str
 
 ALLOWED_MODELS = {
     "openai/gpt-oss-120b",
@@ -109,11 +118,14 @@ def _remove_orphan_tool_messages(
     return cleaned
 
 
-def _messages_for_model(messages: list[BaseMessage]) -> list[BaseMessage]:
+def _messages_for_model(
+    messages: list[BaseMessage],
+    max_tokens: int = MAX_CONTEXT_TOKENS,
+) -> list[BaseMessage]:
     shortened = _truncate_tool_outputs(messages)
     trimmed = trim_messages(
         shortened,
-        max_tokens=MAX_CONTEXT_TOKENS,
+        max_tokens=max_tokens,
         token_counter=count_tokens_approximately,
         strategy="last",
         start_on="human",
@@ -139,7 +151,7 @@ def _messages_for_model(messages: list[BaseMessage]) -> list[BaseMessage]:
     current_turn = _remove_orphan_tool_messages(
         shortened[latest_human_index:]
     )
-    if count_tokens_approximately(current_turn) <= MAX_CONTEXT_TOKENS:
+    if count_tokens_approximately(current_turn) <= max_tokens:
         return current_turn
 
     return [latest_human]
@@ -175,18 +187,35 @@ def build_agent(model_name: str):
         timeout=30,
     )
 
-    llm_with_tools = llm.bind_tools(tools)
+    bound_by_mode = {}
 
-    def chatbot_node(state: MessagesState):
-        history = _messages_for_model(state["messages"])
-        messages = [SystemMessage(content=SYSTEM_PROMPT)] + history
-        response = llm_with_tools.invoke(messages)
+    def model_for(mode: str):
+        if mode not in bound_by_mode:
+            extra = {}
+            # GPT-OSS exposes an adjustable reasoning budget.
+            if mode == "thinking" and selected_model.startswith("openai/gpt-oss"):
+                extra["reasoning_effort"] = "high"
+            bound_by_mode[mode] = llm.bind_tools(tools_for_mode(mode), **extra)
+        return bound_by_mode[mode]
+
+    def chatbot_node(state: AgentState):
+        mode = state.get("mode") or ""
+        mode = mode if mode in CHAT_MODES else ""
+        max_tokens = (
+            max(MAX_CONTEXT_TOKENS, DEEP_RESEARCH_CONTEXT_TOKENS)
+            if mode == "deep_research"
+            else MAX_CONTEXT_TOKENS
+        )
+        history = _messages_for_model(state["messages"], max_tokens)
+        system_prompt = build_system_prompt(mode, state.get("instructions"))
+        messages = [SystemMessage(content=system_prompt)] + history
+        response = model_for(mode).invoke(messages)
 
         return {"messages": [response]}
 
-    tool_node = ToolNode(tools, wrap_tool_call=_truncate_tool_call_result)
+    tool_node = ToolNode(all_tools, wrap_tool_call=_truncate_tool_call_result)
 
-    workflow = StateGraph(MessagesState)
+    workflow = StateGraph(AgentState)
     workflow.add_node("chatbot", chatbot_node)
     workflow.add_node("tools", tool_node)
     workflow.add_edge(START, "chatbot")

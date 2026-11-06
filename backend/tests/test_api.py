@@ -107,8 +107,8 @@ def test_conversation_and_history_endpoints(client):
     assert history.status_code == 200
     assert history.json() == {
         "messages": [
-            {"role": "user", "content": "Hello"},
-            {"role": "assistant", "content": "Hi"},
+            {"role": "user", "content": "Hello", "attachments": []},
+            {"role": "assistant", "content": "Hi", "attachments": []},
         ]
     }
 
@@ -286,6 +286,7 @@ def test_chat_withdraws_text_streamed_before_a_tool_call(client, monkeypatch):
         {"token": "User asks 2*4. "},
         {"token": "Use calculator."},
         {"replace": ""},
+        {"tool": "calculator"},
         {"token": "The answer is "},
         {"token": "8."},
         {"done": True},

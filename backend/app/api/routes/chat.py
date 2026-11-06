@@ -1,4 +1,5 @@
 import logging
+import re
 from typing import Annotated
 
 from fastapi import APIRouter, Depends, Request
@@ -11,14 +12,19 @@ from app.agents import DEFAULT_MODEL, get_agent
 from app.api.dependencies import get_client_id
 from app.db import (
     create_or_update_conversation,
+    get_project,
+    get_uploaded_files,
     save_chat_message,
 )
 from app.schemas.chat import ChatRequest
+from app.services.files import attachment_summary, describe_images
 from app.utils.streaming import (
+    extract_reasoning_from_chunk,
     extract_text_from_chunk,
     has_tool_call,
     should_stream_chunk,
     sse_data,
+    tool_call_names,
 )
 
 
@@ -68,6 +74,24 @@ class ChatValidationRoute(APIRoute):
 
 router = APIRouter(route_class=ChatValidationRoute)
 
+_GENERATED_IMAGE = re.compile(r"IMAGE_URL:\s*(/files/[\w-]+/content)")
+
+
+def _model_message(user_message: str, documents: list, image_notes: str) -> str:
+    """The user's text plus what the model needs to know about attachments."""
+    parts = [user_message]
+    for item in documents:
+        parts.append(
+            f"[Attached document: {item.filename}. It is indexed for this chat; "
+            "use search_uploaded_documents to read it.]"
+        )
+    if image_notes:
+        parts.append(
+            "[Attached image(s). A vision model described them for you:]\n"
+            + image_notes
+        )
+    return "\n\n".join(parts)
+
 
 @router.post("/chat/stream")
 async def chat_stream(
@@ -77,11 +101,14 @@ async def chat_stream(
     user_message = chat_request.message
     thread_id = chat_request.thread_id
     selected_model = chat_request.model or DEFAULT_MODEL
+    mode = chat_request.mode or ""
 
+    extra = {"project_id": chat_request.project_id} if chat_request.project_id else {}
     conversation = create_or_update_conversation(
         thread_id,
         user_message,
         client_id,
+        **extra,
     )
     if conversation is None:
         return JSONResponse(
@@ -89,8 +116,30 @@ async def chat_stream(
             status_code=404,
         )
 
+    instructions = ""
+    project_id = getattr(conversation, "project_id", None)
+    if project_id:
+        project = get_project(project_id, client_id)
+        instructions = project.instructions if project else ""
+
+    attached = (
+        get_uploaded_files(chat_request.attachments, client_id)
+        if chat_request.attachments
+        else []
+    )
+    images = [item for item in attached if item.kind == "image"]
+    documents = [item for item in attached if item.kind == "document"]
+
     agent = get_agent(selected_model)
-    save_chat_message(thread_id, "user", user_message)
+    if attached:
+        save_chat_message(
+            thread_id,
+            "user",
+            user_message,
+            attachments=[attachment_summary(item) for item in attached],
+        )
+    else:
+        save_chat_message(thread_id, "user", user_message)
 
     config = {
         "configurable": {
@@ -106,10 +155,19 @@ async def chat_stream(
         segment_id = None
 
         try:
+            image_notes = ""
+            if images:
+                yield sse_data({"tool": "vision"})
+                image_notes = describe_images(images, user_message)
+
             inputs = {
                 "messages": [
-                    HumanMessage(content=user_message),
-                ]
+                    HumanMessage(
+                        content=_model_message(user_message, documents, image_notes)
+                    ),
+                ],
+                "mode": mode,
+                "instructions": instructions,
             }
 
             for chunk, metadata in agent.stream(
@@ -118,6 +176,16 @@ async def chat_stream(
                 stream_mode="messages",
             ):
                 if isinstance(chunk, ToolMessage):
+                    # A generated image is shown right away, ahead of the reply.
+                    match = (
+                        _GENERATED_IMAGE.search(chunk.content)
+                        if isinstance(chunk.content, str)
+                        else None
+                    )
+                    if match:
+                        image_markdown = f"![Generated image]({match.group(1)})\n\n"
+                        final_answer += image_markdown
+                        yield sse_data({"token": image_markdown})
                     segment_id = None
                     segment_start = len(final_answer)
                 elif isinstance(chunk, (AIMessage, AIMessageChunk)):
@@ -131,6 +199,13 @@ async def chat_stream(
                     if has_tool_call(chunk) and len(final_answer) > segment_start:
                         final_answer = final_answer[:segment_start]
                         yield sse_data({"replace": final_answer})
+
+                    for name in tool_call_names(chunk):
+                        yield sse_data({"tool": name})
+
+                    reasoning = extract_reasoning_from_chunk(chunk)
+                    if reasoning:
+                        yield sse_data({"reasoning": reasoning})
 
                 if not should_stream_chunk(chunk, metadata):
                     continue

@@ -4,6 +4,8 @@ from typing import Annotated
 
 from pydantic import BaseModel, ConfigDict, StringConstraints
 
+from app.schemas.files import Attachment
+
 
 StrippedTitle = Annotated[
     str,
@@ -16,6 +18,7 @@ class ConversationOut(BaseModel):
 
     thread_id: str
     title: str
+    project_id: str | None = None
     created_at: datetime
     updated_at: datetime
 
@@ -35,6 +38,7 @@ class ConversationDeleteResponse(BaseModel):
 class HistoryMessage(BaseModel):
     role: str
     content: str
+    attachments: list[Attachment] = []
 
 
 class HistoryResponse(BaseModel):

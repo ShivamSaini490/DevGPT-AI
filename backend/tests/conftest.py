@@ -68,10 +68,14 @@ def clean_application_tables(database):
         Conversation,
         DocumentChunk,
         LongTermMemory,
+        Project,
+        UploadedFile,
     )
     from app.db.session import engine
 
     tables = (
+        UploadedFile,
+        Project,
         DocumentChunk,
         LongTermMemory,
         ChatMessage,

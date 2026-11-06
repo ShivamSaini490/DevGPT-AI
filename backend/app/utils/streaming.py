@@ -90,3 +90,29 @@ def extract_text_from_chunk(chunk) -> str:
         return "".join(text_parts)
 
     return ""
+
+
+def tool_call_names(chunk) -> list[str]:
+    """Names of tools an AI chunk starts calling (streamed name parts only)."""
+
+    if not isinstance(chunk, (AIMessage, AIMessageChunk)):
+        return []
+
+    names = [
+        call["name"]
+        for call in getattr(chunk, "tool_call_chunks", None) or []
+        if call.get("name")
+    ]
+
+    if not names and not isinstance(chunk, AIMessageChunk):
+        names = [call["name"] for call in chunk.tool_calls if call.get("name")]
+
+    return names
+
+
+def extract_reasoning_from_chunk(chunk) -> str:
+    """Reasoning text some models (e.g. GPT-OSS on Groq) stream beside the answer."""
+
+    additional_kwargs = getattr(chunk, "additional_kwargs", {}) or {}
+    reasoning = additional_kwargs.get("reasoning_content")
+    return reasoning if isinstance(reasoning, str) else ""

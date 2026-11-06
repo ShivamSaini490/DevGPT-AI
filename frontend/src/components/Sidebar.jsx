@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState } from "react";
 import { AnimatePresence, motion } from "motion/react";
-import { MessageSquare, PanelLeftClose, Pencil, SquarePen, Trash2 } from "lucide-react";
+import { ChevronRight, Folder, FolderOpen, FolderPlus, MessageSquare, PanelLeftClose, Pencil, Plus, SquarePen, Trash2 } from "lucide-react";
 import Logo from "./Logo";
 import { MAX_TITLE_LENGTH } from "../lib/api";
 
@@ -102,6 +102,54 @@ function ConversationItem({ conversation, active, onSelect, onDelete, onRename }
   );
 }
 
+function ProjectGroup({ project, chats, active, renderChat, onNewChatInProject }) {
+  const [expanded, setExpanded] = useState(active || chats.length > 0);
+
+  useEffect(() => {
+    if (active) setExpanded(true);
+  }, [active]);
+
+  return (
+    <li className={`project-group ${active ? "active" : ""}`}>
+      <div className="project-row">
+        <button
+          type="button"
+          className="project-toggle"
+          onClick={() => setExpanded((e) => !e)}
+          aria-expanded={expanded}
+          title={project.instructions || project.name}
+        >
+          <ChevronRight size={13} className={`project-caret ${expanded ? "open" : ""}`} />
+          {expanded ? <FolderOpen size={15} /> : <Folder size={15} />}
+          <span>{project.name}</span>
+        </button>
+        <button
+          type="button"
+          className="project-add"
+          onClick={onNewChatInProject}
+          aria-label={`New chat in ${project.name}`}
+          title={`New chat in ${project.name}`}
+        >
+          <Plus size={14} />
+        </button>
+      </div>
+      <AnimatePresence initial={false}>
+        {expanded && (
+          <motion.ul
+            className="conv-list nested"
+            initial={{ height: 0, opacity: 0 }}
+            animate={{ height: "auto", opacity: 1 }}
+            exit={{ height: 0, opacity: 0 }}
+          >
+            {chats.map(renderChat)}
+            {chats.length === 0 && <li className="conv-empty">No chats yet</li>}
+          </motion.ul>
+        )}
+      </AnimatePresence>
+    </li>
+  );
+}
+
 export default function Sidebar({
   open,
   onClose,
@@ -111,7 +159,25 @@ export default function Sidebar({
   onDelete,
   onRename,
   onNewChat,
+  projects = [],
+  activeProjectId,
+  onNewChatInProject,
+  onManageProjects,
 }) {
+  const projectIds = new Set(projects.map((p) => p.id));
+  const loose = conversations.filter((c) => !c.project_id || !projectIds.has(c.project_id));
+
+  const renderChat = (conversation) => (
+    <ConversationItem
+      key={conversation.thread_id}
+      conversation={conversation}
+      active={conversation.thread_id === activeId}
+      onSelect={() => onSelect(conversation.thread_id)}
+      onDelete={() => onDelete(conversation.thread_id)}
+      onRename={(title) => onRename(conversation.thread_id, title)}
+    />
+  );
+
   return (
     <AnimatePresence>
       {open && (
@@ -146,22 +212,39 @@ export default function Sidebar({
               New chat
             </button>
 
-            <div className="sidebar-label">Recent</div>
-            <ul className="conv-list">
-              <AnimatePresence initial={false}>
-                {conversations.map((conversation) => (
-                  <ConversationItem
-                    key={conversation.thread_id}
-                    conversation={conversation}
-                    active={conversation.thread_id === activeId}
-                    onSelect={() => onSelect(conversation.thread_id)}
-                    onDelete={() => onDelete(conversation.thread_id)}
-                    onRename={(title) => onRename(conversation.thread_id, title)}
-                  />
-                ))}
-              </AnimatePresence>
-              {conversations.length === 0 && <li className="conv-empty">No chats yet</li>}
-            </ul>
+            <div className="sidebar-scroll">
+              <div className="sidebar-label with-action">
+                <span>Projects</span>
+                <button type="button" onClick={onManageProjects} aria-label="New or manage projects" title="New or manage projects">
+                  <FolderPlus size={14} />
+                </button>
+              </div>
+              {projects.length > 0 ? (
+                <ul className="project-groups">
+                  {projects.map((project) => (
+                    <ProjectGroup
+                      key={project.id}
+                      project={project}
+                      chats={conversations.filter((c) => c.project_id === project.id)}
+                      active={project.id === activeProjectId}
+                      renderChat={renderChat}
+                      onNewChatInProject={() => onNewChatInProject(project)}
+                    />
+                  ))}
+                </ul>
+              ) : (
+                <button type="button" className="sidebar-ghost" onClick={onManageProjects}>
+                  <FolderPlus size={15} />
+                  New project
+                </button>
+              )}
+
+              <div className="sidebar-label">Recent</div>
+              <ul className="conv-list">
+                <AnimatePresence initial={false}>{loose.map(renderChat)}</AnimatePresence>
+                {loose.length === 0 && <li className="conv-empty">No chats yet</li>}
+              </ul>
+            </div>
 
             <p className="sidebar-foot">Chats are cleared shortly after you close this tab.</p>
           </motion.aside>

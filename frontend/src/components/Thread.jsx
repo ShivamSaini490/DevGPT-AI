@@ -5,8 +5,9 @@ import remarkGfm from "remark-gfm";
 import remarkMath from "remark-math";
 import rehypeKatex from "rehype-katex";
 import "katex/dist/katex.min.css";
-import { Check, CircleAlert, Copy, Paperclip, Square, Volume2 } from "lucide-react";
+import { Check, ChevronDown, CircleAlert, Copy, FileText, Paperclip, Sparkles, Square, Volume2 } from "lucide-react";
 import Logo from "./Logo";
+import { toolLabel } from "../lib/api";
 
 /**
  * Prepare model output for Markdown + KaTeX:
@@ -50,6 +51,7 @@ function Spark({ active }) {
 }
 
 function ToolChip({ tool }) {
+  const name = tool.label || toolLabel(tool.name);
   return (
     <motion.div
       className={`tool-chip ${tool.done ? "done" : ""}`}
@@ -57,8 +59,57 @@ function ToolChip({ tool }) {
       animate={{ opacity: 1, y: 0, scale: 1 }}
     >
       {tool.done ? <Check size={13} /> : <span className="tool-spinner" />}
-      <span>{tool.done ? `${tool.name} complete` : `Using ${tool.name}…`}</span>
+      <span>{tool.done ? `${name} complete` : `Using ${name}…`}</span>
     </motion.div>
+  );
+}
+
+function Reasoning({ text, streaming }) {
+  const [open, setOpen] = useState(false);
+  return (
+    <div className={`reasoning ${open ? "open" : ""}`}>
+      <button type="button" className="reasoning-toggle" onClick={() => setOpen((o) => !o)} aria-expanded={open}>
+        <Sparkles size={13} />
+        <span className={streaming ? "thinking" : ""}>{streaming ? "Thinking" : "Thought process"}</span>
+        <ChevronDown size={14} className={open ? "chev open" : "chev"} />
+      </button>
+      <AnimatePresence initial={false}>
+        {open && (
+          <motion.div
+            className="reasoning-body"
+            initial={{ height: 0, opacity: 0 }}
+            animate={{ height: "auto", opacity: 1 }}
+            exit={{ height: 0, opacity: 0 }}
+          >
+            <p>{text}</p>
+          </motion.div>
+        )}
+      </AnimatePresence>
+    </div>
+  );
+}
+
+function UserAttachments({ items }) {
+  const images = items.filter((a) => a.kind === "image");
+  const docs = items.filter((a) => a.kind !== "image");
+  return (
+    <div className="user-attachments">
+      {images.length > 0 && (
+        <div className={`user-images count-${Math.min(images.length, 3)}`}>
+          {images.map((a) => (
+            <a key={a.id || a.url} href={a.url} target="_blank" rel="noreferrer noopener" title={a.name}>
+              <img src={a.previewUrl || a.url} alt={a.name} loading="lazy" />
+            </a>
+          ))}
+        </div>
+      )}
+      {docs.map((a) => (
+        <a key={a.id || a.name} className="user-doc" href={a.url} target="_blank" rel="noreferrer noopener" title={`Download ${a.name}`}>
+          <FileText size={16} />
+          <span>{a.name}</span>
+        </a>
+      ))}
+    </div>
   );
 }
 
@@ -118,6 +169,11 @@ function SpeakButton({ text }) {
 
 const markdownComponents = {
   a: ({ node: _node, ...props }) => <a {...props} target="_blank" rel="noreferrer noopener" />,
+  img: ({ node: _node, src, alt }) => (
+    <a className="md-image" href={src} target="_blank" rel="noreferrer noopener">
+      <img src={src} alt={alt || ""} loading="lazy" />
+    </a>
+  ),
 };
 
 const remarkPlugins = [remarkGfm, [remarkMath, { singleDollarTextMath: true }]];
@@ -136,20 +192,32 @@ const Message = memo(function Message({ message, index }) {
       transition={{ duration: 0.45, ease: [0.22, 1, 0.36, 1], delay }}
     >
       {isUser ? (
-        <div className="bubble">
-          {message.file ? (
-            <span className="file-chip">
-              <Paperclip size={14} /> {message.file}
-            </span>
-          ) : (
-            message.content
+        <div className="user-col">
+          {message.attachments?.length > 0 && <UserAttachments items={message.attachments} />}
+          {(message.file || message.content) && (
+            <div className="bubble">
+              {message.file ? (
+                <span className="file-chip">
+                  <Paperclip size={14} /> {message.file}
+                </span>
+              ) : (
+                message.content
+              )}
+            </div>
           )}
         </div>
       ) : (
         <>
           <Spark active={message.streaming} />
           <div className="assistant-body">
-            {message.tool && <ToolChip tool={message.tool} />}
+            {(message.tools?.length > 0 || message.tool) && (
+              <div className="tool-chips">
+                {(message.tools || [message.tool]).map((tool, i) => (
+                  <ToolChip key={`${tool.name}-${i}`} tool={tool} />
+                ))}
+              </div>
+            )}
+            {message.reasoning && <Reasoning text={message.reasoning} streaming={message.streaming && !answer} />}
 
             <div className={`answer-card ${message.streaming ? "streaming" : ""} ${message.error ? "has-error" : ""}`}>
               {answer ? (

@@ -12,7 +12,9 @@ export const MODELS = [
   { id: "qwen/qwen3.8-27b", family: "Qwen 3.8", size: "27B", hint: "Balanced" },
 ];
 
-export const UPLOAD_ACCEPT = ".pdf,.docx,.txt,.md,.py,.csv";
+export const UPLOAD_ACCEPT = ".pdf,.docx,.txt,.md,.py,.csv,.png,.jpg,.jpeg,.webp,.gif";
+export const IMAGE_ACCEPT = ".png,.jpg,.jpeg,.webp,.gif";
+export const MAX_ATTACHMENTS = 10;
 
 function safeGet(key) {
   try {
@@ -124,6 +126,63 @@ export async function deleteConversation(threadId) {
   await request(`/conversations/${encodeURIComponent(threadId)}`, { method: "DELETE" });
 }
 
+// ---------- Files, library & projects ----------
+
+/** Upload a photo, document or sketch to a chat. Resolves to the file record. */
+export async function uploadFile(file, threadId, { origin = "upload", projectId } = {}) {
+  const form = new FormData();
+  form.append("file", file);
+  form.append("thread_id", threadId);
+  form.append("origin", origin);
+  if (projectId) form.append("project_id", projectId);
+  const response = await request("/files", { method: "POST", body: form });
+  return response.json();
+}
+
+export async function listLibrary(query = "") {
+  const params = query.trim() ? `?q=${encodeURIComponent(query.trim())}` : "";
+  const response = await request(`/files${params}`);
+  const data = await response.json();
+  return data.files || [];
+}
+
+export async function attachFromLibrary(fileId, threadId, projectId) {
+  const response = await request(`/files/${encodeURIComponent(fileId)}/attach`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ thread_id: threadId, project_id: projectId || null }),
+  });
+  return response.json();
+}
+
+export async function listProjects() {
+  const response = await request("/projects");
+  const data = await response.json();
+  return data.projects || [];
+}
+
+export async function createProject(name, instructions = "") {
+  const response = await request("/projects", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ name, instructions }),
+  });
+  return response.json();
+}
+
+export async function updateProject(id, patch) {
+  const response = await request(`/projects/${encodeURIComponent(id)}`, {
+    method: "PATCH",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(patch),
+  });
+  return response.json();
+}
+
+export async function deleteProject(id) {
+  await request(`/projects/${encodeURIComponent(id)}`, { method: "DELETE" });
+}
+
 export async function uploadDocument(file, threadId) {
   const form = new FormData();
   form.append("file", file);
@@ -163,14 +222,21 @@ function parseSSEPart(part) {
 }
 
 /**
- * Stream a chat reply. Calls onEvent for each `{token}`, `{error}` or `{done}`
- * payload. Resolves when the stream ends; rejects on network / HTTP failure.
+ * Stream a chat reply. Calls onEvent for each `{token}`, `{replace}`, `{tool}`,
+ * `{reasoning}`, `{error}` or `{done}` payload. Resolves when the stream ends; rejects on network / HTTP failure.
  */
-export async function streamChat({ message, threadId, model, signal, onEvent }) {
+export async function streamChat({ message, threadId, model, mode, attachments, projectId, signal, onEvent }) {
   const response = await request("/chat/stream", {
     method: "POST",
     headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({ message, thread_id: threadId, model }),
+    body: JSON.stringify({
+      message,
+      thread_id: threadId,
+      model,
+      mode: mode || null,
+      attachments: attachments || [],
+      project_id: projectId || null,
+    }),
     signal,
   });
 
@@ -233,4 +299,29 @@ export function detectLikelyTool(message) {
     return "Web search";
   if (/(\d+\s*[+\-*/×÷]\s*\d+)|calculate|calculation|math|solve/.test(text)) return "Calculator";
   return null;
+}
+
+// Friendly labels for tool names the backend reports in `{tool}` events.
+const TOOL_LABELS = {
+  vision: "Vision",
+  calculator: "Calculator",
+  search_uploaded_documents: "Document search",
+  remember_this: "Memory",
+  recall_memory: "Memory recall",
+  tavily_search: "Web search",
+  get_live_weather: "Weather",
+  get_stock_quote: "Stock quote",
+  generate_image: "Image generation",
+  github_repo_overview: "GitHub",
+  github_list_pull_requests: "GitHub pull requests",
+  github_pull_request_details: "GitHub pull request",
+  github_list_issues: "GitHub issues",
+  github_ci_status: "GitHub CI",
+  github_create_issue: "GitHub publish",
+  github_add_comment: "GitHub publish",
+  figma_get_design: "Figma",
+};
+
+export function toolLabel(name) {
+  return TOOL_LABELS[name] || name.replace(/_/g, " ");
 }

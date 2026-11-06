@@ -4,7 +4,15 @@ import react from "@vitejs/plugin-react";
 // API routes served by the FastAPI backend. In dev they are proxied so the
 // browser only ever talks to the Vite origin. Only /chat/stream is proxied:
 // GET /chat itself is the React chat page.
-const API_PATHS = ["/conversations", "/history", "/upload", "/chat/stream", "/sessions"];
+const API_PATHS = [
+  "/conversations",
+  "/history",
+  "/upload",
+  "/files",
+  "/projects",
+  "/chat/stream",
+  "/sessions",
+];
 
 export default defineConfig(({ command }) => {
   const target = process.env.VITE_API_TARGET || "http://localhost:8080";

@@ -34,6 +34,7 @@ async def conversations(
             {
                 "thread_id": item.thread_id,
                 "title": item.title,
+                "project_id": item.project_id,
                 "created_at": item.created_at.isoformat(),
                 "updated_at": item.updated_at.isoformat(),
             }
@@ -100,6 +101,7 @@ async def history(
             {
                 "role": msg.role,
                 "content": msg.content,
+                "attachments": msg.attachments or [],
             }
             for msg in messages
         ]

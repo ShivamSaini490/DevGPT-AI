@@ -34,3 +34,21 @@ def init_db():
                 "ON conversations (client_id)"
             )
         )
+        connection.execute(
+            text(
+                "ALTER TABLE conversations "
+                "ADD COLUMN IF NOT EXISTS project_id VARCHAR"
+            )
+        )
+        connection.execute(
+            text(
+                "CREATE INDEX IF NOT EXISTS ix_conversations_project_id "
+                "ON conversations (project_id)"
+            )
+        )
+        connection.execute(
+            text(
+                "ALTER TABLE chat_messages "
+                "ADD COLUMN IF NOT EXISTS attachments JSONB"
+            )
+        )

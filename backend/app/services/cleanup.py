@@ -18,6 +18,8 @@ from app.db.models import (
     Conversation,
     DocumentChunk,
     LongTermMemory,
+    Project,
+    UploadedFile,
 )
 from app.db.session import SessionLocal
 
@@ -65,8 +67,20 @@ def delete_conversation_data(thread_id: str) -> bool:
                 and isinstance((source := metadata.get("source")), str)
                 and source
             }
+            sources.update(
+                db.scalars(
+                    select(UploadedFile.stored_name).where(
+                        UploadedFile.thread_id == thread_id
+                    )
+                ).all()
+            )
 
-            for model in (ChatMessage, LongTermMemory, DocumentChunk):
+            for model in (
+                ChatMessage,
+                LongTermMemory,
+                DocumentChunk,
+                UploadedFile,
+            ):
                 db.execute(delete(model).where(model.thread_id == thread_id))
 
             db.execute(
@@ -132,6 +146,11 @@ def run_cleanup(now: datetime) -> None:
         db = SessionLocal()
         try:
             with db.begin():
+                db.execute(
+                    delete(Project).where(
+                        Project.client_id.in_(expired_client_ids)
+                    )
+                )
                 db.execute(
                     delete(ClientSession).where(
                         ClientSession.client_id.in_(expired_client_ids)
