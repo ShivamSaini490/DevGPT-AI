@@ -9,6 +9,30 @@ This repository runs as two containers:
 The setup is intended for local development and testing. It is not a hardened
 production deployment.
 
+## Run FastAPI directly with Uvicorn
+
+The repository-level `main.py` exposes the FastAPI application. Activate the
+Python 3.12 project environment first; a global Python 3.14 installation does
+not contain this project's dependencies.
+
+```powershell
+py -3.12 -m venv backend/venv       # First setup only
+.\backend\venv\Scripts\Activate.ps1
+python -m pip install -r backend/requirements.txt
+uvicorn main:app --reload
+```
+
+It uses the host database settings from `backend/.env`. You can run only the
+Docker database first with `docker compose up -d postgres`, then open the local
+app at <http://127.0.0.1:8000>.
+
+If your terminal is already in `backend/`, the same command works there too:
+
+```powershell
+.\venv\Scripts\Activate.ps1
+uvicorn main:app --reload
+```
+
 ## First setup after cloning
 
 Install Git, Python 3, and Docker Desktop (or Docker Engine + Compose). Then:
