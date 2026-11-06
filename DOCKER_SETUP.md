@@ -2,7 +2,8 @@
 
 This repository runs as two containers:
 
-- `backend`: FastAPI/Uvicorn on port `8080`; it also serves the current static frontend.
+- `backend`: FastAPI/Uvicorn on port `8080`; it also serves the production build
+  of the React/Vite frontend (built inside the image).
 - `postgres`: PostgreSQL 16 with pgvector 0.8.7 on host port `5435`.
 
 The setup is intended for local development and testing. It is not a hardened
@@ -91,19 +92,36 @@ the named database and upload volumes.
 
 ## Frontend developer workflow
 
-The checked-in `frontend/` directory is served by FastAPI, so a frontend
-developer can edit it immediately with the development command above. Browser
-requests use relative URLs and reach the backend at the same origin.
+The frontend in `frontend/` is a React + Vite app (three.js background, GSAP and
+Motion animations). The Docker image builds it with Node and FastAPI serves the
+result from `frontend/dist` (`/` and `/static/*`).
 
-If a separate React/Vite frontend is introduced, run it on port `5173` and use
-`http://localhost:8080` as its API base URL. The default backend CORS list
-already allows:
+For hot reload, use the development stack. It adds a `frontend` container
+running the Vite dev server:
 
-- `http://localhost:5173`
-- `http://127.0.0.1:5173`
+```powershell
+docker compose -f compose.yaml -f compose.dev.yaml up --build
+```
 
-Each browser client must continue to follow the API's `X-Client-Id` and
-streaming contracts.
+Open <http://localhost:5173>. Vite proxies the API routes (`/chat`,
+`/conversations`, `/history`, `/upload`, `/sessions`) to the backend, so the
+browser only talks to one origin.
+
+Without Docker for the frontend (Node 20.19+ or 22.12+):
+
+```powershell
+cd frontend
+npm install
+npm run dev      # http://localhost:5173, proxies to http://localhost:8080
+npm run build    # writes frontend/dist, served by FastAPI at http://localhost:8080
+```
+
+Set `VITE_API_TARGET` to point the dev proxy at a different backend URL.
+
+The frontend sends an `X-Client-Id` header on every API request, sends a
+session heartbeat every minute, and sends a close beacon when the tab is
+closed. The backend deletes a client's chats `CLOSE_GRACE_SECONDS` after the
+close beacon, or after `IDLE_TIMEOUT_MINUTES` without a heartbeat.
 
 ## Run tests in Docker
 

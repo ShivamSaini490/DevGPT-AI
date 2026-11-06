@@ -1,5 +1,16 @@
 # syntax=docker/dockerfile:1
 
+FROM node:24-slim AS frontend-build
+
+WORKDIR /app/frontend
+
+COPY frontend/package.json frontend/package-lock.json ./
+RUN npm ci --no-audit --no-fund
+
+COPY frontend/ ./
+RUN npm run build
+
+
 FROM python:3.12-slim AS dependencies
 
 ENV PYTHONDONTWRITEBYTECODE=1 \
@@ -19,7 +30,7 @@ RUN groupadd --gid 10001 devgpt \
     && useradd --uid 10001 --gid devgpt --create-home --shell /usr/sbin/nologin devgpt
 
 COPY --chown=devgpt:devgpt backend/ /app/backend/
-COPY --chown=devgpt:devgpt frontend/ /app/frontend/
+COPY --from=frontend-build --chown=devgpt:devgpt /app/frontend/dist/ /app/frontend/dist/
 
 RUN mkdir -p /app/backend/uploads && chown -R devgpt:devgpt /app/backend/uploads
 

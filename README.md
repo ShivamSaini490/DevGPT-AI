@@ -2,7 +2,7 @@
 
 Think It. Say It. DevGPT Replies.
 
-DevGPT is a FastAPI application with a static HTML/CSS/JavaScript frontend,
+DevGPT is a FastAPI application with a React + Vite frontend,
 PostgreSQL + pgvector storage, document search, tools, and streamed chat.
 
 ## Run with Docker
@@ -25,11 +25,13 @@ docker compose ps
 Open <http://localhost:8080>. API documentation is at
 <http://localhost:8080/docs>.
 
-For live reload while editing the backend or the included frontend:
+For live reload while editing the backend or the frontend:
 
 ```powershell
 docker compose -f compose.yaml -f compose.dev.yaml up --build
 ```
+
+The Vite dev server then runs at <http://localhost:5173> with hot reload.
 
 See [DOCKER_SETUP.md](DOCKER_SETUP.md) for frontend-developer workflow,
 testing, configuration, troubleshooting, and data-management commands.

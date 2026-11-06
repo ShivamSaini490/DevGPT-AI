@@ -16,7 +16,7 @@ from app.core.config import (
     DEBUG,
     ENABLE_CLEANUP_TASK,
 )
-from app.core.paths import FRONTEND_DIR
+from app.core.paths import FRONTEND_DIST_DIR
 from app.db import init_db
 from app.services.cleanup import run_cleanup
 from app.utils.time import utc_now_naive
@@ -69,5 +69,10 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
-app.mount("/static", StaticFiles(directory=str(FRONTEND_DIR)), name="static")
+# check_dir=False lets the API start before the frontend has been built.
+app.mount(
+    "/static",
+    StaticFiles(directory=str(FRONTEND_DIST_DIR), check_dir=False),
+    name="static",
+)
 app.include_router(api_router)

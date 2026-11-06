@@ -1,4 +1,5 @@
 import json
+import re
 from pathlib import Path
 
 from langchain_core.messages import AIMessageChunk, ToolMessage
@@ -21,14 +22,22 @@ def _sse_payloads(response):
 
 def test_homepage_and_static_assets_are_served(client):
     home = client.get("/")
-    css = client.get("/static/css/style.css")
-    javascript = client.get("/static/js/script.js")
     openapi = client.get("/openapi.json")
 
     assert home.status_code == 200
     assert "DevGPT" in home.text
-    assert css.status_code == 200
-    assert javascript.status_code == 200
+
+    # The chat page is a client-side route of the same app.
+    chat_page = client.get("/chat")
+    assert chat_page.status_code == 200
+    assert chat_page.text == home.text
+
+    # When the React build is present, every asset index.html references
+    # must be served from /static.
+    asset_paths = re.findall(r'(?:src|href)="(/static/[^"]+)"', home.text)
+    for asset_path in asset_paths:
+        assert client.get(asset_path).status_code == 200, asset_path
+
     assert openapi.json()["info"]["title"] == "DevGPT API"
     assert openapi.json()["info"]["version"] == "0.1.0"
 

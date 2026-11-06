@@ -1,0 +1,31 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 800 560">
+  <defs>
+    <radialGradient id="bg" cx="0.65" cy="0.2" r="0.95"><stop offset="0" stop-color="#34d399"/><stop offset="0.5" stop-color="#0f6b49"/><stop offset="1" stop-color="#04231a"/></radialGradient>
+    <linearGradient id="area" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="#6ee7b7" stop-opacity="0.55"/><stop offset="1" stop-color="#6ee7b7" stop-opacity="0"/></linearGradient>
+  </defs>
+  <rect width="800" height="560" fill="url(#bg)"/>
+  <g transform="translate(80 80)">
+    <rect width="500" height="330" rx="22" fill="#062a1f" fill-opacity="0.75" stroke="#ffffff" stroke-opacity="0.18"/>
+    <rect x="28" y="28" width="90" height="16" rx="8" fill="#ffffff" opacity="0.9"/>
+    <rect x="128" y="30" width="56" height="12" rx="6" fill="#6ee7b7"/>
+    <g stroke="#ffffff" stroke-opacity="0.08">
+      <line x1="28" y1="120" x2="472" y2="120"/><line x1="28" y1="180" x2="472" y2="180"/><line x1="28" y1="240" x2="472" y2="240"/><line x1="28" y1="300" x2="472" y2="300"/>
+    </g>
+    <path d="M28 270 L90 250 L140 262 L200 210 L250 222 L310 160 L360 176 L420 110 L472 92 L472 300 L28 300 Z" fill="url(#area)"/>
+    <path d="M28 270 L90 250 L140 262 L200 210 L250 222 L310 160 L360 176 L420 110 L472 92" fill="none" stroke="#6ee7b7" stroke-width="4" stroke-linejoin="round" stroke-linecap="round"/>
+    <circle cx="472" cy="92" r="16" fill="#6ee7b7" opacity="0.3"/>
+    <circle cx="472" cy="92" r="8" fill="#ffffff"/>
+  </g>
+  <g transform="translate(500 270)">
+    <rect width="220" height="230" rx="22" fill="#ffffff" fill-opacity="0.95"/>
+    <rect x="20" y="20" width="180" height="50" rx="12" fill="#04231a"/>
+    <rect x="110" y="38" width="76" height="14" rx="7" fill="#6ee7b7"/>
+    <g fill="#0f6b49" opacity="0.18">
+      <rect x="20" y="86" width="40" height="30" rx="8"/><rect x="66" y="86" width="40" height="30" rx="8"/><rect x="112" y="86" width="40" height="30" rx="8"/>
+      <rect x="20" y="124" width="40" height="30" rx="8"/><rect x="66" y="124" width="40" height="30" rx="8"/><rect x="112" y="124" width="40" height="30" rx="8"/>
+      <rect x="20" y="162" width="40" height="30" rx="8"/><rect x="66" y="162" width="40" height="30" rx="8"/><rect x="112" y="162" width="40" height="30" rx="8"/>
+    </g>
+    <rect x="158" y="86" width="42" height="68" rx="8" fill="#10b981"/>
+    <rect x="158" y="162" width="42" height="30" rx="8" fill="#04231a"/>
+  </g>
+</svg>

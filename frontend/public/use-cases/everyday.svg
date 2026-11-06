@@ -1,0 +1,30 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 800 560">
+  <defs>
+    <radialGradient id="bg" cx="0.5" cy="0.25" r="0.95"><stop offset="0" stop-color="#fdba74"/><stop offset="0.5" stop-color="#c2410c"/><stop offset="1" stop-color="#3a1206"/></radialGradient>
+    <radialGradient id="sun" cx="0.5" cy="0.5" r="0.5"><stop offset="0" stop-color="#fff7d6"/><stop offset="0.7" stop-color="#fde68a"/><stop offset="1" stop-color="#fbbf24"/></radialGradient>
+  </defs>
+  <rect width="800" height="560" fill="url(#bg)"/>
+  <g transform="translate(250 190)">
+    <g stroke="#fde68a" stroke-width="8" stroke-linecap="round" opacity="0.8">
+      <line x1="0" y1="-150" x2="0" y2="-120"/><line x1="0" y1="120" x2="0" y2="150"/>
+      <line x1="-150" y1="0" x2="-120" y2="0"/><line x1="120" y1="0" x2="150" y2="0"/>
+      <line x1="-106" y1="-106" x2="-85" y2="-85"/><line x1="85" y1="85" x2="106" y2="106"/>
+      <line x1="-106" y1="106" x2="-85" y2="85"/><line x1="85" y1="-85" x2="106" y2="-106"/>
+    </g>
+    <circle r="96" fill="url(#sun)"/>
+  </g>
+  <path d="M300 330 a70 70 0 0 1 132 -22 a56 56 0 0 1 96 46 a48 48 0 0 1 -6 96 H306 a60 60 0 0 1 -6 -120 z" fill="#ffffff" fill-opacity="0.92"/>
+  <g transform="translate(470 80)">
+    <rect width="250" height="150" rx="20" fill="#3a1206" fill-opacity="0.55" stroke="#ffffff" stroke-opacity="0.3"/>
+    <rect x="22" y="24" width="90" height="12" rx="6" fill="#ffffff" opacity="0.85"/>
+    <rect x="22" y="54" width="120" height="34" rx="10" fill="#ffffff" opacity="0.95"/>
+    <rect x="22" y="104" width="200" height="10" rx="5" fill="#ffffff" opacity="0.45"/>
+    <rect x="22" y="122" width="150" height="10" rx="5" fill="#ffffff" opacity="0.45"/>
+  </g>
+  <g transform="translate(80 430)">
+    <rect width="230" height="60" rx="30" fill="#ffffff" fill-opacity="0.18" stroke="#ffffff" stroke-opacity="0.35"/>
+    <circle cx="32" cy="30" r="14" fill="#5fd3a2"/>
+    <path d="M25 30l5 5 9-10" fill="none" stroke="#0b2a1d" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"/>
+    <rect x="58" y="24" width="140" height="12" rx="6" fill="#ffffff" opacity="0.9"/>
+  </g>
+</svg>
