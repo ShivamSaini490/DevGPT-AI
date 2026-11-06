@@ -17,6 +17,7 @@ import app.tools.memory_recall as memory_recall_module
 import app.tools.memory_save as memory_save_module
 import app.tools.stock_market as stock_module
 import app.tools.weather as weather_module
+import app.tools.web_search as web_search_module
 
 
 class FakeResponse:
@@ -160,8 +161,14 @@ def test_tool_registry_contains_all_expected_tools():
         "standard",
     ]
     assert stock_schema["properties"]["symbol"]["description"]
-    assert web_search.max_results == 3
-    assert web_search.search_depth == "basic"
+
+
+def test_web_search_reports_missing_configuration(monkeypatch):
+    monkeypatch.setattr(web_search_module, "TAVILY_API_KEY", "")
+
+    assert web_search.invoke({"query": "latest AI news"}) == (
+        "Web search is not configured. Add TAVILY_API_KEY to backend/.env."
+    )
 
 
 def test_weather_reports_missing_configuration(monkeypatch):

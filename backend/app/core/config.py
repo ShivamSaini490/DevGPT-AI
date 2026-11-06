@@ -57,6 +57,7 @@ CORS_ORIGINS = [
 GOOGLE_API_KEY = _usable_secret("GOOGLE_API_KEY")
 GROQ_API_KEY = _usable_secret("GROQ_API_KEY")
 DEFAULT_GROQ_MODEL = os.getenv("GROQ_MODEL") or "openai/gpt-oss-120b"
+TAVILY_API_KEY = _usable_secret("TAVILY_API_KEY")
 
 WEATHER_API_KEY = _usable_secret("WEATHER_API_KEY")
 ALPHA_VANTAGE_API_KEY = _usable_secret("ALPHA_VANTAGE_API_KEY")

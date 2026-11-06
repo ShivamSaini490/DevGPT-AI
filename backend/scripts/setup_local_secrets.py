@@ -1,7 +1,8 @@
-"""Initialize local secrets and synchronize the Docker PostgreSQL role safely.
+"""Initialize local secrets and optionally synchronize the Docker PostgreSQL role.
 
 The generated values are never printed. Existing non-placeholder values are
-preserved. This helper is intended for local development only.
+preserved. On first use, backend/.env is copied from backend/.env.example.
+This helper is intended for local development only.
 """
 
 from __future__ import annotations
@@ -10,6 +11,7 @@ import argparse
 import os
 import re
 import secrets
+import shutil
 import subprocess
 import tempfile
 from pathlib import Path
@@ -17,6 +19,7 @@ from pathlib import Path
 
 BACKEND_DIR = Path(__file__).resolve().parents[1]
 ENV_FILE = BACKEND_DIR / ".env"
+ENV_EXAMPLE_FILE = BACKEND_DIR / ".env.example"
 PLACEHOLDER_MARKERS = ("replace-with", "your ", "test-")
 IDENTIFIER_PATTERN = re.compile(r"^[A-Za-z_][A-Za-z0-9_]*$")
 
@@ -43,7 +46,9 @@ def _replace_env_value(contents: str, name: str, value: str) -> str:
     replacement = f"{name}={value}"
     pattern = re.compile(rf"^\s*{re.escape(name)}\s*=.*$", re.MULTILINE)
     if pattern.search(contents):
-        return pattern.sub(replacement, contents, count=1)
+        # Keep duplicate dotenv entries consistent. Compose and python-dotenv
+        # otherwise let a later blank entry override the generated value.
+        return pattern.sub(replacement, contents)
     separator = "" if contents.endswith(("\n", "\r")) else os.linesep
     return f"{contents}{separator}{replacement}{os.linesep}"
 
@@ -65,9 +70,7 @@ def _quote_sql_literal(value: str) -> str:
     return "'" + value.replace("'", "''") + "'"
 
 
-def _synchronize_postgres_password(
-    *, container: str, database_user: str, password: str
-) -> None:
+def _synchronize_postgres_password(*, database_user: str, password: str) -> None:
     if not IDENTIFIER_PATTERN.fullmatch(database_user):
         raise ValueError("POSTGRES_USER must be a valid PostgreSQL identifier.")
 
@@ -78,11 +81,10 @@ def _synchronize_postgres_password(
     result = subprocess.run(
         [
             "docker",
+            "compose",
             "exec",
-            "-i",
-            "-u",
+            "-T",
             "postgres",
-            container,
             "psql",
             "-U",
             database_user,
@@ -103,11 +105,22 @@ def _synchronize_postgres_password(
 
 def main() -> None:
     parser = argparse.ArgumentParser()
-    parser.add_argument("--postgres-container", default="devgpt-postgres")
+    parser.add_argument(
+        "--sync-postgres",
+        action="store_true",
+        help="also update the password in an already-running Compose database",
+    )
     args = parser.parse_args()
 
     if not ENV_FILE.is_file():
-        raise FileNotFoundError(f"Environment file not found: {ENV_FILE}")
+        if not ENV_EXAMPLE_FILE.is_file():
+            raise FileNotFoundError(
+                f"Environment template not found: {ENV_EXAMPLE_FILE}"
+            )
+        shutil.copyfile(ENV_EXAMPLE_FILE, ENV_FILE)
+        env_status = "created from backend/.env.example"
+    else:
+        env_status = "preserved"
 
     contents = ENV_FILE.read_text(encoding="utf-8")
     values = _parse_env(contents)
@@ -131,16 +144,21 @@ def main() -> None:
         password_status = "preserved"
 
     database_user = values.get("POSTGRES_USER", "devgpt")
-    _synchronize_postgres_password(
-        container=args.postgres_container,
-        database_user=database_user,
-        password=postgres_password,
-    )
     _write_atomically(ENV_FILE, contents)
 
+    if args.sync_postgres:
+        _synchronize_postgres_password(
+            database_user=database_user,
+            password=postgres_password,
+        )
+
+    print(f"backend/.env: {env_status}")
     print(f"SECRET_KEY: {secret_status} (value hidden)")
     print(f"POSTGRES_PASSWORD: {password_status} (value hidden)")
-    print(f"PostgreSQL role '{database_user}' synchronized successfully.")
+    if args.sync_postgres:
+        print(f"PostgreSQL role '{database_user}' synchronized successfully.")
+    else:
+        print("PostgreSQL synchronization: skipped (normal for first setup)")
 
 
 if __name__ == "__main__":

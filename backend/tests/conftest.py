@@ -21,8 +21,8 @@ TEST_LANGGRAPH_DATABASE_URL = (
 TEST_CLIENT_ID = "11111111-1111-4111-8111-111111111111"
 
 # Set test-only values before any application module imports configuration.
-os.environ["DATABASE_URL"] = TEST_DATABASE_URL
-os.environ["LANGGRAPH_DATABASE_URL"] = TEST_LANGGRAPH_DATABASE_URL
+os.environ.setdefault("DATABASE_URL", TEST_DATABASE_URL)
+os.environ.setdefault("LANGGRAPH_DATABASE_URL", TEST_LANGGRAPH_DATABASE_URL)
 os.environ["USE_POSTGRES_COMPONENTS"] = "false"
 os.environ["APP_NAME"] = "DevGPT API"
 os.environ["APP_VERSION"] = "0.1.0"

@@ -4,12 +4,29 @@ from langchain_core.documents import Document
 from langchain_google_genai import GoogleGenerativeAIEmbeddings
 from sqlalchemy import select
 
-from app.core.config import EMBEDDING_MODEL
+from app.core.config import EMBEDDING_MODEL, GOOGLE_API_KEY
 from app.db.models import DocumentChunk
 from app.db.session import SessionLocal
 
 
-embeddings = GoogleGenerativeAIEmbeddings(model=EMBEDDING_MODEL)
+embeddings = None
+
+
+def _get_embeddings():
+    """Create the optional Google client only when document RAG is used."""
+    global embeddings
+
+    if embeddings is None:
+        if not GOOGLE_API_KEY:
+            raise RuntimeError(
+                "GOOGLE_API_KEY is required for document embeddings."
+            )
+        embeddings = GoogleGenerativeAIEmbeddings(
+            model=EMBEDDING_MODEL,
+            google_api_key=GOOGLE_API_KEY,
+        )
+
+    return embeddings
 
 
 class PostgresVectorStore:
@@ -20,7 +37,7 @@ class PostgresVectorStore:
             return []
 
         texts = [document.page_content for document in documents]
-        vectors = embeddings.embed_documents(texts)
+        vectors = _get_embeddings().embed_documents(texts)
         ids = [str(uuid.uuid4()) for _ in documents]
         db = SessionLocal()
 
@@ -51,7 +68,7 @@ class PostgresVectorStore:
         k: int = 4,
         filter: dict | None = None,
     ) -> list[Document]:
-        query_vector = embeddings.embed_query(query)
+        query_vector = _get_embeddings().embed_query(query)
         db = SessionLocal()
 
         try:

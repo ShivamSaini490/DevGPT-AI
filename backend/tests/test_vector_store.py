@@ -71,6 +71,14 @@ def test_add_documents_with_empty_list_does_not_embed(fake_embeddings):
     assert fake_embeddings.document_calls == []
 
 
+def test_embedding_client_is_optional_until_rag_is_used(monkeypatch):
+    monkeypatch.setattr(vector_store_module, "embeddings", None)
+    monkeypatch.setattr(vector_store_module, "GOOGLE_API_KEY", "")
+
+    with pytest.raises(RuntimeError, match="GOOGLE_API_KEY is required"):
+        vector_store_module.PostgresVectorStore().similarity_search("query")
+
+
 def test_similarity_search_uses_l2_order_and_thread_filter(fake_embeddings):
     store = vector_store_module.PostgresVectorStore()
     store.add_documents(
