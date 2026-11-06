@@ -1,7 +1,5 @@
 import { ArrowUp, Check, MessageSquare, Plus, SquarePen } from "lucide-react";
-
-const SPARK =
-  "M16 2c1.2 7.4 6.6 12.8 14 14-7.4 1.2-12.8 6.6-14 14-1.2-7.4-6.6-12.8-14-14C9.4 14.8 14.8 9.4 16 2z";
+import Logo from "../../components/Logo";
 
 // Illustrative product mock: a DevGPT window inside a large dark stage.
 // The calculation shown is real (18% of 2,450 = 441).
@@ -14,9 +12,7 @@ export default function Showcase() {
         <div className="mock" aria-hidden="true">
           <aside className="mock-side">
             <div className="mock-brand">
-              <svg viewBox="0 0 32 32" width="14" height="14">
-                <path fill="var(--accent)" d={SPARK} />
-              </svg>
+              <Logo size={18} />
               DevGPT
             </div>
             <div className="mock-new">
@@ -38,9 +34,7 @@ export default function Showcase() {
               <div className="mock-user sc-user">What's 18% of 2,450? Also remember that I budget in INR.</div>
               <div className="mock-assistant">
                 <span className="mock-spark">
-                  <svg viewBox="0 0 32 32" width="13" height="13">
-                    <path fill="currentColor" d={SPARK} />
-                  </svg>
+                  <Logo size={13} variant="current" />
                 </span>
                 <div>
                   <div className="mock-chips">

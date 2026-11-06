@@ -1,6 +1,7 @@
 import { useEffect, useRef, useState } from "react";
 import gsap from "gsap";
 import { useGSAP } from "@gsap/react";
+import Logo from "./Logo";
 
 gsap.registerPlugin(useGSAP);
 
@@ -44,6 +45,13 @@ export default function Splash({ ready, onDone }) {
         duration: 0.7,
         ease: "back.out(1.8)",
       });
+
+      // The inner spark pops in and turns once the D has landed.
+      tl.from(
+        ".splash-mark .logo-spark",
+        { scale: 0, rotate: -180, transformOrigin: "50% 50%", duration: 0.6, ease: "back.out(2.2)" },
+        "-=0.25"
+      );
 
       // One word at a time, with a short breath at the end of each phrase.
       let at = 0.35;
@@ -107,18 +115,7 @@ export default function Splash({ ready, onDone }) {
       aria-label={TAGLINE}
       onClick={() => ready && exit()}
     >
-      <svg className="splash-mark" viewBox="0 0 32 32" width="34" height="34" aria-hidden="true">
-        <defs>
-          <linearGradient id="splash-g" x1="0" y1="0" x2="1" y2="1">
-            <stop offset="0" stopColor="var(--spark-a)" />
-            <stop offset="1" stopColor="var(--spark-b)" />
-          </linearGradient>
-        </defs>
-        <path
-          fill="url(#splash-g)"
-          d="M16 2c1.2 7.4 6.6 12.8 14 14-7.4 1.2-12.8 6.6-14 14-1.2-7.4-6.6-12.8-14-14C9.4 14.8 14.8 9.4 16 2z"
-        />
-      </svg>
+      <Logo size={52} className="splash-mark" />
 
       <p className="splash-line" aria-hidden="true">
         {PHRASES.map((phrase, p) => (

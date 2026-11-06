@@ -30,7 +30,8 @@ RUN groupadd --gid 10001 devgpt \
     && useradd --uid 10001 --gid devgpt --create-home --shell /usr/sbin/nologin devgpt
 
 COPY --chown=devgpt:devgpt backend/ /app/backend/
-COPY --chown=devgpt:devgpt frontend/ /app/frontend/
+# Only the production build of the React app is needed at runtime.
+COPY --from=frontend-build --chown=devgpt:devgpt /app/frontend/dist/ /app/frontend/dist/
 COPY --chown=devgpt:devgpt main.py /app/main.py
 
 RUN mkdir -p /app/backend/uploads && chown -R devgpt:devgpt /app/backend/uploads

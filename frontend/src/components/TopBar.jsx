@@ -1,5 +1,6 @@
 import { AnimatePresence, motion } from "motion/react";
 import { PanelLeft, SquarePen } from "lucide-react";
+import Logo from "./Logo";
 import ThemeToggle from "./ThemeToggle";
 
 export default function TopBar({ sidebarOpen, onToggleSidebar, onNewChat, theme, onToggleTheme, onHome, status }) {
@@ -27,6 +28,7 @@ export default function TopBar({ sidebarOpen, onToggleSidebar, onNewChat, theme,
                 }}
                 title="Back to home"
               >
+                <Logo size={26} />
                 DevGPT
               </a>
             </motion.div>

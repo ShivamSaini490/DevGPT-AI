@@ -15,6 +15,25 @@ def sse_data(payload: dict | StreamEvent) -> str:
     return f"data: {json.dumps(data, ensure_ascii=False)}\n\n"
 
 
+def has_tool_call(chunk) -> bool:
+    """True when an AI chunk carries (part of) a tool call."""
+
+    if not isinstance(chunk, (AIMessage, AIMessageChunk)):
+        return False
+
+    if getattr(chunk, "tool_calls", None):
+        return True
+
+    if getattr(chunk, "tool_call_chunks", None):
+        return True
+
+    if getattr(chunk, "invalid_tool_calls", None):
+        return True
+
+    additional_kwargs = getattr(chunk, "additional_kwargs", {}) or {}
+    return bool(additional_kwargs.get("tool_calls"))
+
+
 def should_stream_chunk(chunk, metadata) -> bool:
     """
     Stream only normal AI text chunks and hide tool calls/tool output.

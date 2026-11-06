@@ -241,6 +241,58 @@ def test_chat_streams_only_ai_text_and_saves_final_answer(client, monkeypatch):
     ]
 
 
+def test_chat_withdraws_text_streamed_before_a_tool_call(client, monkeypatch):
+    """The model sometimes 'thinks aloud' in content before calling a tool.
+
+    That text is streamed before the tool call is visible, so the server must
+    withdraw it with a `replace` event and keep it out of the saved answer.
+    """
+
+    class ThinkingAloudAgent:
+        def stream(self, inputs, config, stream_mode):
+            node = {"langgraph_node": "chatbot"}
+            yield AIMessageChunk(content="User asks 2*4. ", id="m1"), node
+            yield AIMessageChunk(content="Use calculator.", id="m1"), node
+            yield AIMessageChunk(
+                content="",
+                id="m1",
+                tool_call_chunks=[
+                    {"name": "calculator", "args": "{}", "id": "c1", "index": 0}
+                ],
+            ), node
+            yield ToolMessage(content="8", tool_call_id="c1"), {"langgraph_node": "tools"}
+            yield AIMessageChunk(content="The answer is ", id="m2"), node
+            yield AIMessageChunk(content="8.", id="m2"), node
+
+    saved_messages = []
+    monkeypatch.setattr(chat_routes, "get_agent", lambda model: ThinkingAloudAgent())
+    monkeypatch.setattr(
+        chat_routes,
+        "create_or_update_conversation",
+        lambda thread_id, message, client_id: object(),
+    )
+    monkeypatch.setattr(
+        chat_routes,
+        "save_chat_message",
+        lambda thread_id, role, content: saved_messages.append((role, content)),
+    )
+
+    response = client.post(
+        "/chat/stream",
+        json={"message": "2*4", "thread_id": "thread-think", "model": None},
+    )
+
+    assert _sse_payloads(response) == [
+        {"token": "User asks 2*4. "},
+        {"token": "Use calculator."},
+        {"replace": ""},
+        {"token": "The answer is "},
+        {"token": "8."},
+        {"done": True},
+    ]
+    assert saved_messages == [("user", "2*4"), ("assistant", "The answer is 8.")]
+
+
 def test_chat_stream_reports_agent_errors(client, monkeypatch):
     class FailingAgent:
         def stream(self, inputs, config, stream_mode):

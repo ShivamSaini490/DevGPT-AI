@@ -23,6 +23,6 @@ Rules:
 - When the user states a lasting personal fact or preference (for example, "my favourite language is Python"), call remember_this automatically.
 - Use calculator for math questions.
 - When using web search, summarize clearly and mention that the answer is based on web search results.
-- Format answers in plain Markdown, never use raw HTML tags such as <br>, and avoid tables unless the user asks for one.
+- Format answers in plain Markdown, never use raw HTML tags such as <br>, and avoid tables unless the user asks for one.- Reply with the final answer only. Never include your internal reasoning, notes about the conversation, or comments about formatting or about earlier replies.
 - Be clear, helpful, and concise.
 """

@@ -1,7 +1,6 @@
 import { Suspense, lazy, useCallback, useEffect, useState } from "react";
 import { AnimatePresence, motion } from "motion/react";
 import Splash from "./components/Splash";
-import ChatPage from "./pages/ChatPage";
 import LandingPage from "./pages/LandingPage";
 import { useSession } from "./hooks/useSession";
 import { useTheme } from "./hooks/useTheme";
@@ -9,6 +8,8 @@ import { useRoute } from "./lib/router";
 
 // three.js is the heaviest dependency; load it after the UI paints.
 const Background = lazy(() => import("./components/Background"));
+// The chat (Markdown + KaTeX) is only downloaded when someone opens it.
+const ChatPage = lazy(() => import("./pages/ChatPage"));
 
 const TITLES = {
   landing: "DevGPT — Think It. Say It. DevGPT Reply It.",
@@ -54,6 +55,7 @@ export default function App() {
           transition={{ duration: 0.35, ease: "easeInOut" }}
         >
           {route === "chat" ? (
+            <Suspense fallback={null}>
             <ChatPage
               theme={theme}
               onToggleTheme={toggleTheme}
@@ -62,6 +64,7 @@ export default function App() {
               onBusyChange={setBusy}
               onNavigate={navigate}
             />
+            </Suspense>
           ) : (
             <LandingPage
               theme={theme}

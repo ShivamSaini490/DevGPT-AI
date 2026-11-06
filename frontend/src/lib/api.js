@@ -108,6 +108,18 @@ export async function getHistory(threadId) {
   return data.messages || [];
 }
 
+// Backend trims the title and accepts 1–80 characters.
+export const MAX_TITLE_LENGTH = 80;
+
+export async function renameConversation(threadId, title) {
+  const response = await request(`/conversations/${encodeURIComponent(threadId)}`, {
+    method: "PATCH",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ title }),
+  });
+  return response.json();
+}
+
 export async function deleteConversation(threadId) {
   await request(`/conversations/${encodeURIComponent(threadId)}`, { method: "DELETE" });
 }

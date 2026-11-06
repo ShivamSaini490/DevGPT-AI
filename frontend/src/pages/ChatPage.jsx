@@ -11,6 +11,7 @@ import { useDictation } from "../hooks/useDictation";
 import {
   MODELS,
   deleteConversation,
+  renameConversation,
   detectLikelyTool,
   getHistory,
   listConversations,
@@ -181,6 +182,7 @@ export default function ChatPage({ theme, onToggleTheme, introDone, onReady, onB
         content: "",
         streaming: true,
         tool: toolName ? { name: toolName, done: false } : null,
+        model: modelInfo ? `${modelInfo.family} ${modelInfo.size}` : null,
       },
     ]);
     setInput("");
@@ -198,6 +200,14 @@ export default function ChatPage({ theme, onToggleTheme, introDone, onReady, onB
         model,
         signal: controller.signal,
         onEvent: (data) => {
+          // The server withdrew text the model wrote before calling a tool.
+          if (data.replace != null) {
+            patchMessage(assistantId, (m) => ({
+              content: data.replace,
+              // A tool is about to run, so its badge goes back to "in progress".
+              tool: m.tool ? { ...m.tool, done: false } : null,
+            }));
+          }
           if (data.token != null) {
             if (firstToken) {
               firstToken = false;
@@ -305,6 +315,22 @@ export default function ChatPage({ theme, onToggleTheme, introDone, onReady, onB
     [threadId, newChat, showToast]
   );
 
+  const renameThread = useCallback(
+    async (id, title) => {
+      const previous = conversations.find((c) => c.thread_id === id)?.title;
+      // Optimistic: show the new name right away.
+      setConversations((list) => list.map((c) => (c.thread_id === id ? { ...c, title } : c)));
+      try {
+        const saved = await renameConversation(id, title);
+        setConversations((list) => list.map((c) => (c.thread_id === id ? { ...c, title: saved.title } : c)));
+      } catch (error) {
+        setConversations((list) => list.map((c) => (c.thread_id === id ? { ...c, title: previous } : c)));
+        showToast(`Couldn't rename chat: ${error.message}`);
+      }
+    },
+    [conversations, showToast]
+  );
+
   // Esc stops generation.
   useEffect(() => {
     const onKey = (event) => {
@@ -338,6 +364,7 @@ export default function ChatPage({ theme, onToggleTheme, introDone, onReady, onB
         activeId={threadId}
         onSelect={selectThread}
         onDelete={removeThread}
+        onRename={renameThread}
         onNewChat={newChat}
       />
 

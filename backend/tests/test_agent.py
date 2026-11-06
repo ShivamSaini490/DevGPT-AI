@@ -23,6 +23,12 @@ def test_system_prompt_requires_proactive_memory_tool_use():
     assert '"my favourite language is Python"' in SYSTEM_PROMPT
 
 
+def test_system_prompt_keeps_reasoning_out_of_answers():
+    from app.agents.prompts import SYSTEM_PROMPT
+
+    assert "Never include your internal reasoning" in SYSTEM_PROMPT
+
+
 def test_model_history_trimming_keeps_latest_human_and_drops_orphan_tool(
     database,
     monkeypatch,

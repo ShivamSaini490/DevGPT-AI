@@ -5,7 +5,7 @@ from fastapi import APIRouter, Depends, Request
 from fastapi.exceptions import RequestValidationError
 from fastapi.responses import JSONResponse, StreamingResponse
 from fastapi.routing import APIRoute
-from langchain_core.messages import HumanMessage
+from langchain_core.messages import AIMessage, AIMessageChunk, HumanMessage, ToolMessage
 
 from app.agents import DEFAULT_MODEL, get_agent
 from app.api.dependencies import get_client_id
@@ -16,6 +16,7 @@ from app.db import (
 from app.schemas.chat import ChatRequest
 from app.utils.streaming import (
     extract_text_from_chunk,
+    has_tool_call,
     should_stream_chunk,
     sse_data,
 )
@@ -99,6 +100,10 @@ async def chat_stream(
 
     def event_generator():
         final_answer = ""
+        # Where the current model message's text starts in final_answer, so it
+        # can be withdrawn if that message turns out to be a tool call.
+        segment_start = 0
+        segment_id = None
 
         try:
             inputs = {
@@ -112,6 +117,21 @@ async def chat_stream(
                 config=config,
                 stream_mode="messages",
             ):
+                if isinstance(chunk, ToolMessage):
+                    segment_id = None
+                    segment_start = len(final_answer)
+                elif isinstance(chunk, (AIMessage, AIMessageChunk)):
+                    chunk_id = getattr(chunk, "id", None)
+                    if chunk_id and chunk_id != segment_id:
+                        segment_id = chunk_id
+                        segment_start = len(final_answer)
+
+                    # Text streamed before a tool call is the model thinking
+                    # aloud, not part of the answer: take it back.
+                    if has_tool_call(chunk) and len(final_answer) > segment_start:
+                        final_answer = final_answer[:segment_start]
+                        yield sse_data({"replace": final_answer})
+
                 if not should_stream_chunk(chunk, metadata):
                     continue
 

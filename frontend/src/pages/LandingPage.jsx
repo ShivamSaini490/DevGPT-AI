@@ -21,6 +21,7 @@ import {
   Zap,
 } from "lucide-react";
 import Link from "../components/Link";
+import Logo from "../components/Logo";
 import ThemeToggle from "../components/ThemeToggle";
 import FeatureStack from "./landing/FeatureStack";
 import HeroField from "./landing/HeroField";
@@ -31,9 +32,6 @@ import UseCases from "./landing/UseCases";
 gsap.registerPlugin(useGSAP, ScrollTrigger);
 
 const REPO_URL = "https://github.com/ShivamSaini490/DevGPT-AI";
-const SPARK =
-  "M16 2c1.2 7.4 6.6 12.8 14 14-7.4 1.2-12.8 6.6-14 14-1.2-7.4-6.6-12.8-14-14C9.4 14.8 14.8 9.4 16 2z";
-
 // Each phrase stays on one line; the title only wraps between phrases.
 const TAGLINE = [
   [{ text: "Think" }, { text: "It." }],
@@ -199,9 +197,7 @@ export default function LandingPage({ theme, onToggleTheme, introDone, onNavigat
       <header className={`l-nav ${scrolled ? "scrolled" : ""}`}>
         <div className="l-nav-inner">
           <a href="#top" className="l-brand" onClick={(e) => scrollToHash(e, "#top")}>
-            <svg viewBox="0 0 32 32" width="20" height="20" aria-hidden="true">
-              <path fill="var(--accent)" d={SPARK} />
-            </svg>
+            <Logo size={28} />
             DevGPT
           </a>
 

@@ -2,7 +2,26 @@ import json
 
 from langchain_core.messages import AIMessage, AIMessageChunk, HumanMessage, ToolMessage
 
-from app.utils.streaming import extract_text_from_chunk, should_stream_chunk, sse_data
+from app.utils.streaming import (
+    extract_text_from_chunk,
+    has_tool_call,
+    should_stream_chunk,
+    sse_data,
+)
+
+
+def test_has_tool_call_detects_streamed_and_complete_tool_calls():
+    assert has_tool_call(
+        AIMessageChunk(
+            content="",
+            tool_call_chunks=[{"name": "calculator", "args": "{}", "id": "c1", "index": 0}],
+        )
+    )
+    assert has_tool_call(
+        AIMessage(content="", tool_calls=[{"name": "calculator", "args": {}, "id": "c1"}])
+    )
+    assert not has_tool_call(AIMessageChunk(content="plain text"))
+    assert not has_tool_call(ToolMessage(content="8", tool_call_id="c1"))
 
 
 def test_sse_data_serializes_unicode_payload():

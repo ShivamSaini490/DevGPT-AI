@@ -2,23 +2,49 @@ import { memo, useEffect, useRef, useState } from "react";
 import { AnimatePresence, motion } from "motion/react";
 import Markdown from "react-markdown";
 import remarkGfm from "remark-gfm";
-import { Check, CircleAlert, Copy, Paperclip } from "lucide-react";
+import remarkMath from "remark-math";
+import rehypeKatex from "rehype-katex";
+import "katex/dist/katex.min.css";
+import { Check, CircleAlert, Copy, Paperclip, Square, Volume2 } from "lucide-react";
+import Logo from "./Logo";
+
+/**
+ * Prepare model output for Markdown + KaTeX:
+ *  - \( … \) → $…$ and \[ … \] → $$…$$ (remark-math only knows dollar syntax)
+ *  - drop empty bold artifacts like "** **"
+ * Code spans and fenced blocks are left untouched.
+ */
+function normalizeAnswer(text) {
+  const parts = text.split(/(```[\s\S]*?(?:```|$)|`[^`\n]*`)/g);
+  return parts
+    .map((part, i) => {
+      if (i % 2 === 1) return part; // code
+      return part
+        .replace(/\\\[([\s\S]+?)\\\]/g, (_, math) => `\n$$\n${math.trim()}\n$$\n`)
+        .replace(/\\\(([\s\S]+?)\\\)/g, (_, math) => `$${math.trim()}$`)
+        .replace(/^[ \t]*\*\*[ \t]*\*\*[ \t]*$/gm, "");
+    })
+    .join("")
+    .trim();
+}
+
+// Rough Markdown → speech text for "Read aloud".
+function speakable(text) {
+  return normalizeAnswer(text)
+    .replace(/```[\s\S]*?```/g, " code block. ")
+    .replace(/\$\$?([^$]+)\$\$?/g, "$1")
+    .replace(/\\times/g, " times ")
+    .replace(/\\div/g, " divided by ")
+    .replace(/[*_#>`~|\\{}]/g, "")
+    .replace(/\[([^\]]+)\]\([^)]+\)/g, "$1")
+    .replace(/\s+/g, " ")
+    .trim();
+}
 
 function Spark({ active }) {
   return (
     <span className={`spark ${active ? "active" : ""}`} aria-hidden="true">
-      <svg viewBox="0 0 32 32" width="18" height="18">
-        <defs>
-          <linearGradient id="spark-g" x1="0" y1="0" x2="1" y2="1">
-            <stop offset="0" stopColor="var(--spark-a)" />
-            <stop offset="1" stopColor="var(--spark-b)" />
-          </linearGradient>
-        </defs>
-        <path
-          fill="url(#spark-g)"
-          d="M16 2c1.2 7.4 6.6 12.8 14 14-7.4 1.2-12.8 6.6-14 14-1.2-7.4-6.6-12.8-14-14C9.4 14.8 14.8 9.4 16 2z"
-        />
-      </svg>
+      <Logo size={17} />
     </span>
   );
 }
@@ -41,7 +67,7 @@ function CopyButton({ text }) {
   return (
     <button
       type="button"
-      className="msg-action"
+      className="card-action"
       onClick={async () => {
         try {
           await navigator.clipboard.writeText(text);
@@ -52,9 +78,40 @@ function CopyButton({ text }) {
         }
       }}
       aria-label="Copy response"
-      title="Copy"
     >
       {copied ? <Check size={14} /> : <Copy size={14} />}
+      <span>{copied ? "Copied" : "Copy"}</span>
+    </button>
+  );
+}
+
+function SpeakButton({ text }) {
+  const [speaking, setSpeaking] = useState(false);
+  const supported = typeof window !== "undefined" && "speechSynthesis" in window;
+
+  useEffect(() => () => speaking && window.speechSynthesis.cancel(), [speaking]);
+
+  if (!supported) return null;
+
+  const toggle = () => {
+    const synth = window.speechSynthesis;
+    if (speaking) {
+      synth.cancel();
+      setSpeaking(false);
+      return;
+    }
+    synth.cancel();
+    const utterance = new SpeechSynthesisUtterance(speakable(text));
+    utterance.onend = () => setSpeaking(false);
+    utterance.onerror = () => setSpeaking(false);
+    synth.speak(utterance);
+    setSpeaking(true);
+  };
+
+  return (
+    <button type="button" className={`card-action ${speaking ? "on" : ""}`} onClick={toggle} aria-pressed={speaking}>
+      {speaking ? <Square size={12} fill="currentColor" /> : <Volume2 size={14} />}
+      <span>{speaking ? "Stop" : "Read aloud"}</span>
     </button>
   );
 }
@@ -63,9 +120,13 @@ const markdownComponents = {
   a: ({ node: _node, ...props }) => <a {...props} target="_blank" rel="noreferrer noopener" />,
 };
 
+const remarkPlugins = [remarkGfm, [remarkMath, { singleDollarTextMath: true }]];
+const rehypePlugins = [[rehypeKatex, { throwOnError: false, strict: "ignore" }]];
+
 const Message = memo(function Message({ message, index }) {
   const isUser = message.role === "user";
   const delay = message.fromHistory ? Math.min(index * 0.04, 0.4) : 0;
+  const answer = message.content ? normalizeAnswer(message.content) : "";
 
   return (
     <motion.article
@@ -90,30 +151,40 @@ const Message = memo(function Message({ message, index }) {
           <div className="assistant-body">
             {message.tool && <ToolChip tool={message.tool} />}
 
-            {message.content ? (
-              <div className={`markdown ${message.streaming ? "streaming" : ""}`}>
-                <Markdown remarkPlugins={[remarkGfm]} components={markdownComponents}>
-                  {message.content}
-                </Markdown>
-              </div>
-            ) : (
-              message.streaming && <div className="thinking">Thinking</div>
-            )}
+            <div className={`answer-card ${message.streaming ? "streaming" : ""} ${message.error ? "has-error" : ""}`}>
+              {answer ? (
+                <div className={`markdown ${message.streaming ? "streaming" : ""}`}>
+                  <Markdown
+                    remarkPlugins={remarkPlugins}
+                    rehypePlugins={rehypePlugins}
+                    components={markdownComponents}
+                  >
+                    {answer}
+                  </Markdown>
+                </div>
+              ) : (
+                message.streaming && <div className="thinking">Thinking</div>
+              )}
 
-            {message.error && (
-              <div className="msg-error" role="alert">
-                <CircleAlert size={15} />
-                <span>{message.error}</span>
-              </div>
-            )}
+              {message.error && (
+                <div className="msg-error" role="alert">
+                  <CircleAlert size={15} />
+                  <span>{message.error}</span>
+                </div>
+              )}
 
-            {message.stopped && <div className="msg-note">Stopped</div>}
+              {message.stopped && <div className="msg-note">Stopped</div>}
 
-            {!message.streaming && message.content && (
-              <div className="msg-actions">
-                <CopyButton text={message.content} />
-              </div>
-            )}
+              {!message.streaming && answer && (
+                <div className="card-footer">
+                  {message.model && <span className="card-model">{message.model}</span>}
+                  <div className="card-actions">
+                    <SpeakButton text={answer} />
+                    <CopyButton text={answer} />
+                  </div>
+                </div>
+              )}
+            </div>
           </div>
         </>
       )}

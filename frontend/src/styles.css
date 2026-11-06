@@ -286,6 +286,9 @@ button:disabled {
 }
 
 .wordmark {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
   font-weight: 600;
   font-size: 16px;
   letter-spacing: -0.01em;
@@ -1145,10 +1148,15 @@ button:disabled {
   to { transform: rotate(360deg); }
 }
 
+/* Streaming: the D glows softly while its inner spark spins (see .logo-spark). */
 @keyframes spark-spin {
-  0% { transform: rotate(0deg) scale(1); }
-  50% { transform: rotate(180deg) scale(0.82); }
-  100% { transform: rotate(360deg) scale(1); }
+  0%,
+  100% {
+    filter: drop-shadow(0 0 0 transparent);
+  }
+  50% {
+    filter: drop-shadow(0 0 5px color-mix(in srgb, var(--spark-b) 70%, transparent));
+  }
 }
 
 @keyframes shimmer {
@@ -1229,4 +1237,331 @@ button:disabled {
     overflow: hidden;
     text-overflow: ellipsis;
   }
+}
+
+/* =====================================================================
+   Answer card (assistant replies)
+   ===================================================================== */
+
+.msg.assistant .assistant-body {
+  padding-top: 0;
+}
+
+.answer-card {
+  position: relative;
+  padding: 16px 20px 12px;
+  border-radius: 18px;
+  background: var(--glass);
+  border: 1px solid var(--border);
+  backdrop-filter: blur(18px) saturate(140%);
+  -webkit-backdrop-filter: blur(18px) saturate(140%);
+  transition: transform 0.35s cubic-bezier(0.22, 1, 0.36, 1), box-shadow 0.35s ease, background-color 0.35s ease,
+    border-color 0.35s ease;
+}
+
+/* Gradient hairline that lights up on hover (and pulses while streaming). */
+.answer-card::before {
+  content: "";
+  position: absolute;
+  inset: -1px;
+  border-radius: inherit;
+  padding: 1px;
+  background: linear-gradient(135deg, var(--spark-a), transparent 35%, transparent 65%, var(--spark-b));
+  background-size: 200% 200%;
+  -webkit-mask: linear-gradient(#000 0 0) content-box, linear-gradient(#000 0 0);
+  -webkit-mask-composite: xor;
+  mask: linear-gradient(#000 0 0) content-box exclude, linear-gradient(#000 0 0);
+  opacity: 0;
+  transition: opacity 0.35s ease;
+  pointer-events: none;
+}
+
+.answer-card:hover {
+  transform: translateY(-2px);
+  background: var(--glass-strong);
+  border-color: transparent;
+  box-shadow: 0 22px 50px -28px color-mix(in srgb, var(--accent) 55%, transparent), var(--shadow);
+}
+
+.answer-card:hover::before {
+  opacity: 1;
+}
+
+.answer-card.streaming::before {
+  opacity: 0.8;
+  animation: card-sheen 2.4s linear infinite;
+}
+
+@keyframes card-sheen {
+  to {
+    background-position: 200% 200%;
+  }
+}
+
+.answer-card.has-error {
+  border-color: color-mix(in srgb, var(--danger) 35%, transparent);
+}
+
+.answer-card .msg-error {
+  margin-top: 0;
+}
+
+.answer-card .markdown + .msg-error {
+  margin-top: 10px;
+}
+
+.answer-card .thinking {
+  padding-bottom: 4px;
+}
+
+/* Footer: model label + actions. It floats just under the card, in the gap
+   between messages, and fades in on hover, so it takes no space and nothing
+   shifts. */
+.card-footer {
+  position: absolute;
+  top: 100%;
+  left: 4px;
+  right: 4px;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  padding-top: 4px;
+  opacity: 0;
+  transform: translateY(-4px);
+  pointer-events: none;
+  transition: opacity 0.25s ease, transform 0.25s ease;
+}
+
+.answer-card:hover .card-footer,
+.card-footer:focus-within {
+  opacity: 1;
+  transform: none;
+  pointer-events: auto;
+}
+
+/* Touch screens have no hover: keep the footer inline and visible. */
+@media (hover: none) {
+  .card-footer {
+    position: static;
+    margin-top: 10px;
+    padding-top: 8px;
+    border-top: 1px solid var(--border);
+    opacity: 1;
+    transform: none;
+    pointer-events: auto;
+  }
+}
+
+.card-model {
+  display: inline-flex;
+  align-items: center;
+  gap: 7px;
+  font-size: 12px;
+  color: var(--text-3);
+}
+
+.card-model::before {
+  content: "";
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+  background: var(--accent);
+}
+
+.card-actions {
+  display: flex;
+  gap: 2px;
+  margin-left: auto;
+}
+
+.card-action {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  height: 28px;
+  padding: 0 10px;
+  border-radius: 8px;
+  font-size: 12.5px;
+  color: var(--text-2);
+  transition: background-color 0.2s ease, color 0.2s ease;
+}
+
+.card-action:hover {
+  background: var(--hover);
+  color: var(--text);
+}
+
+.card-action.on {
+  color: var(--accent);
+}
+
+/* ---------- Math (KaTeX) ---------- */
+
+.markdown .katex {
+  font-size: 1.06em;
+}
+
+.markdown .katex-display {
+  margin: 0.7em 0;
+  padding: 10px 14px;
+  border-radius: 12px;
+  background: var(--code-bg);
+  overflow-x: auto;
+  overflow-y: hidden;
+}
+
+.markdown .katex-display > .katex {
+  font-size: 1.15em;
+}
+
+@media (max-width: 640px) {
+  .answer-card {
+    padding: 14px 16px 10px;
+  }
+
+  .card-action span {
+    display: none;
+  }
+}
+
+/* Room under each answer for its floating hover footer. */
+@media (hover: hover) {
+  .msg.assistant {
+    margin-bottom: 14px;
+  }
+}
+
+
+/* =====================================================================
+   Logo (D + spark) motion
+   ===================================================================== */
+
+.logo .logo-spark,
+.logo .logo-twinkle {
+  transform-box: fill-box;
+  transform-origin: center;
+  transition: transform 0.6s cubic-bezier(0.34, 1.56, 0.64, 1);
+}
+
+/* The little outer star shimmers gently. */
+.logo .logo-twinkle {
+  animation: logo-shimmer 3.4s ease-in-out infinite;
+}
+
+@keyframes logo-shimmer {
+  0%,
+  100% {
+    opacity: 1;
+    transform: scale(1);
+  }
+  50% {
+    opacity: 0.35;
+    transform: scale(0.55) rotate(45deg);
+  }
+}
+
+/* While an answer streams, the inner spark spins like the old star did. */
+.spark.active .logo-spark {
+  animation: logo-twinkle 1.3s cubic-bezier(0.6, 0, 0.4, 1) infinite;
+}
+
+@keyframes logo-twinkle {
+  0% {
+    transform: rotate(0deg) scale(1);
+  }
+  50% {
+    transform: rotate(90deg) scale(0.55);
+  }
+  100% {
+    transform: rotate(180deg) scale(1);
+  }
+}
+
+/* Hovering the brand turns the spark a quarter. */
+.l-brand:hover .logo-spark,
+.wordmark:hover .logo-spark {
+  transform: rotate(90deg) scale(1.15);
+}
+
+/* =====================================================================
+   Sidebar row: chat icon ⇄ rename button, inline title editing
+   ===================================================================== */
+
+.conv-main {
+  padding-left: 4px;
+}
+
+.conv-icon {
+  position: relative;
+  flex: none;
+  display: grid;
+  place-items: center;
+  width: 28px;
+  height: 28px;
+  margin-left: 5px;
+  border-radius: 8px;
+  color: var(--text-3);
+  transition: background-color 0.2s ease, color 0.2s ease;
+}
+
+.conv-icon svg {
+  position: absolute;
+  transition: opacity 0.2s ease, transform 0.25s cubic-bezier(0.34, 1.56, 0.64, 1);
+}
+
+.conv-icon .ic-edit {
+  opacity: 0;
+  transform: scale(0.6) rotate(-30deg);
+}
+
+/* Row hover (or keyboard focus on the button): chat icon → pencil. */
+.conv:hover .conv-icon .ic-chat,
+.conv-icon:focus-visible .ic-chat,
+.conv.editing .conv-icon .ic-chat {
+  opacity: 0;
+  transform: scale(0.6) rotate(30deg);
+}
+
+.conv:hover .conv-icon .ic-edit,
+.conv-icon:focus-visible .ic-edit,
+.conv.editing .conv-icon .ic-edit {
+  opacity: 1;
+  transform: none;
+}
+
+.conv-icon:hover,
+.conv.editing .conv-icon {
+  color: var(--accent);
+  background: color-mix(in srgb, var(--accent) 12%, transparent);
+}
+
+@media (hover: none) {
+  .conv-icon .ic-chat {
+    opacity: 0;
+  }
+
+  .conv-icon .ic-edit {
+    opacity: 1;
+    transform: none;
+  }
+}
+
+.conv-input {
+  flex: 1;
+  min-width: 0;
+  height: 30px;
+  margin: 4px 6px 4px 4px;
+  padding: 0 9px;
+  border-radius: 8px;
+  border: 1px solid color-mix(in srgb, var(--accent) 55%, transparent);
+  background: var(--bg);
+  color: var(--text);
+  font-size: 14px;
+  outline: none;
+  box-shadow: 0 0 0 3px var(--ring);
+}
+
+.conv.editing {
+  background: var(--active);
 }
