@@ -1,0 +1,98 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <title>DevGPT</title>
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+
+    <link rel="stylesheet" href="/static/css/style.css">
+</head>
+
+<body>
+
+<aside class="sidebar">
+    <div class="brand">DevGPT</div>
+
+    <button class="new-chat" onclick="newChat()">+ New chat</button>
+
+    <div class="history-title">Recent Chats</div>
+    <div id="conversationList"></div>
+</aside>
+
+<main class="main">
+    <div class="topbar">
+        <div>Agentic AI Chatbot</div>
+        <div class="status" id="status">Ready</div>
+    </div>
+
+    <div class="chat-container" id="chatContainer">
+        <div class="welcome" id="welcome">
+            <h1>How can I help you today?</h1>
+            <p>Ask questions, upload documents, use tools, search the web, and chat with memory.</p>
+        </div>
+
+        <div class="cards" id="cards">
+            <div class="card" onclick="usePrompt('Search the web for latest AI agent news.')">
+                Search latest web info
+            </div>
+
+            <div class="card" onclick="usePrompt('Summarize the document I uploaded.')">
+                Summarize uploaded document
+            </div>
+
+            <div class="card" onclick="usePrompt">
+                Save something to memory
+            </div>
+
+            <div class="card" onclick="usePrompt('Calculate 125 * 48 / 6')">
+                Use calculator tool
+            </div>
+        </div>
+    </div>
+
+    <div class="input-area">
+        <div class="input-wrapper">
+
+            <input
+                type="file"
+                id="fileInput"
+                style="display: none;"
+                accept=".pdf,.docx,.txt,.md,.py,.csv"
+                onchange="uploadFile()"
+            >
+
+            <button class="attach-btn" onclick="openFilePicker()" title="Upload document">
+                📎
+            </button>
+
+            <textarea
+                id="messageInput"
+                placeholder="Ask anything..."
+                rows="1"
+                oninput="autoResize(this)"
+                onkeydown="handleKeyDown(event)"
+            ></textarea>
+
+            <select id="modelSelect" class="model-select" title="Select model">
+                <option value="openai/gpt-oss-120b">openai/gpt-oss-120b</option>
+                <option value="openai/gpt-oss-20b">openai/gpt-oss-20b</option>
+                <option value="qwen/qwen3.8-27b">qwen/qwen3.8-27b</option>
+            </select>
+
+            <button class="mic-btn" id="micBtn" onclick="toggleDictation()" title="Dictate">
+                🎙️
+            </button>
+
+            <button class="send-btn" id="sendBtn" onclick="sendMessage()">➜</button>
+        </div>
+
+        <div class="notice" id="noticeText">
+            DevGPT can make mistakes. Check important info.
+        </div>
+    </div>
+</main>
+
+<script src="/static/js/script.js"></script>
+
+</body>
+</html>
