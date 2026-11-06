@@ -1,0 +1,38 @@
+name: devgpt-test
+
+services:
+  postgres-test:
+    image: pgvector/pgvector:0.8.7-pg16-trixie
+    environment:
+      POSTGRES_DB: devgpt_test
+      POSTGRES_USER: devgpt_test
+      POSTGRES_PASSWORD: devgpt_test_password
+    ports:
+      - "${TEST_POSTGRES_HOST_PORT:-5436}:5432"
+    tmpfs:
+      - /var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U devgpt_test -d devgpt_test"]
+      interval: 3s
+      timeout: 5s
+      retries: 15
+      start_period: 5s
+
+  backend-tests:
+    profiles: ["tests"]
+    build:
+      context: .
+      target: test
+    environment:
+      DATABASE_URL: postgresql+psycopg://devgpt_test:devgpt_test_password@postgres-test:5432/devgpt_test
+      LANGGRAPH_DATABASE_URL: postgresql://devgpt_test:devgpt_test_password@postgres-test:5432/devgpt_test
+      USE_POSTGRES_COMPONENTS: "false"
+      GOOGLE_API_KEY: test-google-key
+      GROQ_API_KEY: test-groq-key
+      TAVILY_API_KEY: test-tavily-key
+      LANGSMITH_TRACING: "false"
+      ENABLE_CLEANUP_TASK: "false"
+      COVERAGE_FILE: /tmp/.coverage
+    depends_on:
+      postgres-test:
+        condition: service_healthy

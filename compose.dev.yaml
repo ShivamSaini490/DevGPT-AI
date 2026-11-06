@@ -1,0 +1,20 @@
+services:
+  backend:
+    build:
+      target: runtime
+    command:
+      - uvicorn
+      - app.main:app
+      - --host
+      - 0.0.0.0
+      - --port
+      - "8080"
+      - --reload
+      - --reload-dir
+      - /app/backend/app
+    environment:
+      DEBUG: "true"
+    volumes:
+      - ./backend:/app/backend
+      - ./frontend:/app/frontend
+      - uploads_data:/app/backend/uploads
