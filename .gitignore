@@ -24,3 +24,13 @@ build/
 .DS_Store
 Thumbs.db
 .vscode/
+
+
+# Test coverage
+.coverage
+.coverage.*
+htmlcov/
+coverage.xml
+
+# Uploaded files
+backend/uploads/
