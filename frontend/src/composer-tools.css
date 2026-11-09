@@ -30,11 +30,9 @@
   overflow-y: auto;
   padding: 6px;
   border-radius: 18px;
-  background: var(--glass-strong);
+  background: var(--menu-bg);
   border: 1px solid var(--border);
   box-shadow: var(--shadow);
-  backdrop-filter: blur(24px);
-  -webkit-backdrop-filter: blur(24px);
 }
 
 .plus-panel.down {

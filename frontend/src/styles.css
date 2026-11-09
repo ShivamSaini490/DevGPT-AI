@@ -12,6 +12,7 @@
   --text-3: #6c7491;
   --glass: rgba(15, 19, 34, 0.55);
   --glass-strong: rgba(15, 19, 34, 0.82);
+  --menu-bg: #0f1322;
   --border: rgba(255, 255, 255, 0.08);
   --border-strong: rgba(255, 255, 255, 0.16);
   --hover: rgba(255, 255, 255, 0.06);
@@ -42,6 +43,7 @@
   --text-3: #8b92a7;
   --glass: rgba(255, 255, 255, 0.58);
   --glass-strong: rgba(255, 255, 255, 0.86);
+  --menu-bg: #ffffff;
   --border: rgba(17, 20, 29, 0.08);
   --border-strong: rgba(17, 20, 29, 0.16);
   --hover: rgba(17, 20, 29, 0.05);
