@@ -96,6 +96,15 @@ _derived_database_url = (
     f"{quote(POSTGRES_USER, safe='')}:{quote(POSTGRES_PASSWORD, safe='')}"
     f"@{POSTGRES_HOST}:{POSTGRES_PORT}/{quote(POSTGRES_DB, safe='')}"
 )
+if os.getenv("POSTGRES_SSLMODE"):
+    _derived_database_url += (
+        f"?sslmode={os.getenv('POSTGRES_SSLMODE')}"
+    )
+
+    if os.getenv("POSTGRES_CHANNEL_BINDING"):
+        _derived_database_url += (
+            f"&channel_binding={os.getenv('POSTGRES_CHANNEL_BINDING')}"
+        )
 _use_postgres_components = _as_bool(os.getenv("USE_POSTGRES_COMPONENTS"))
 DATABASE_URL = (
     _derived_database_url
