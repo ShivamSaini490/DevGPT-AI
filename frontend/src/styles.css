@@ -656,6 +656,52 @@ button:disabled {
 
 /* ---------- Thread ---------- */
 
+/* Holds the scrolling thread plus the jump button (outside the fade mask). */
+.thread-wrap {
+  position: relative;
+  flex: 1;
+  min-height: 0;
+  width: 100%;
+  display: flex;
+  flex-direction: column;
+}
+
+.jump-latest {
+  position: absolute;
+  left: 50%;
+  bottom: 12px;
+  translate: -50% 0;
+  z-index: 2;
+  display: grid;
+  place-items: center;
+  width: 36px;
+  height: 36px;
+  border-radius: 50%;
+  color: var(--text);
+  background: var(--glass-strong);
+  border: 1px solid var(--border-strong);
+  box-shadow: var(--shadow);
+  backdrop-filter: blur(14px) saturate(1.4);
+  -webkit-backdrop-filter: blur(14px) saturate(1.4);
+  cursor: pointer;
+  transition: background-color 0.2s ease, border-color 0.2s ease;
+}
+
+.jump-latest:hover {
+  background: var(--glass);
+  border-color: var(--accent);
+}
+
+.jump-icon {
+  display: grid;
+  place-items: center;
+}
+
+.jump-latest:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 2px;
+}
+
 .thread {
   flex: 1;
   min-height: 0;
