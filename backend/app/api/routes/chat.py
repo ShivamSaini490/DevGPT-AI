@@ -75,6 +75,18 @@ class ChatValidationRoute(APIRoute):
 router = APIRouter(route_class=ChatValidationRoute)
 
 _GENERATED_IMAGE = re.compile(r"IMAGE_URL:\s*(/files/[\w-]+/content)")
+_IMAGE_REQUEST = re.compile(
+    r"\b(?:create|generate|make|draw|design|render|paint)\b.{0,60}"
+    r"\b(?:image|picture|photo|illustration|artwork|wallpaper)\b|"
+    r"\b(?:image|picture|illustration|artwork|wallpaper)\s+of\b",
+    re.IGNORECASE,
+)
+
+
+def _resolved_mode(message: str, requested_mode: str | None) -> str:
+    if requested_mode:
+        return requested_mode
+    return "image" if _IMAGE_REQUEST.search(message) else ""
 
 
 def _model_message(user_message: str, documents: list, image_notes: str) -> str:
@@ -101,7 +113,7 @@ async def chat_stream(
     user_message = chat_request.message
     thread_id = chat_request.thread_id
     selected_model = chat_request.model or DEFAULT_MODEL
-    mode = chat_request.mode or ""
+    mode = _resolved_mode(user_message, chat_request.mode)
 
     extra = {"project_id": chat_request.project_id} if chat_request.project_id else {}
     conversation = create_or_update_conversation(

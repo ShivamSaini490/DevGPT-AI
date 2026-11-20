@@ -187,6 +187,25 @@ def test_chat_ignores_unknown_mode(client, monkeypatch):
     assert agent.inputs["mode"] == ""
 
 
+def test_chat_automatically_enables_image_mode(client, monkeypatch):
+    agent = RecordingAgent()
+    monkeypatch.setattr(chat_routes, "get_agent", lambda model: agent)
+
+    response = client.post(
+        "/chat/stream",
+        json={
+            "message": "create an image of goku",
+            "thread_id": "t-auto-image",
+        },
+    )
+
+    assert response.status_code == 200
+    assert agent.inputs["mode"] == "image"
+    assert chat_routes._resolved_mode(
+        "create an image of goku", "thinking"
+    ) == "thinking"
+
+
 def test_chat_describes_attached_images_and_saves_attachments(
     client, monkeypatch, uploads
 ):
@@ -270,7 +289,10 @@ def test_chat_shows_generated_image_before_reply(client, monkeypatch):
 
 
 def test_build_system_prompt_adds_mode_and_project_instructions():
-    assert build_system_prompt() == SYSTEM_PROMPT
+    default_prompt = build_system_prompt()
+    assert default_prompt.startswith(SYSTEM_PROMPT)
+    assert "Current date:" in default_prompt
+    assert "potentially stale" in default_prompt
     prompt = build_system_prompt("deep_research", "Use metric units.")
     assert "Mode: Deep research." in prompt
     assert prompt.endswith("Use metric units.\n")

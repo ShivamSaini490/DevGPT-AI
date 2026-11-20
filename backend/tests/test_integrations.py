@@ -1,10 +1,12 @@
 """GitHub, Figma, image generation, vision and library-copy behaviour (no network)."""
 
 import json
+from io import BytesIO
 
 import httpx
 import pytest
 from langchain_core.messages import AIMessage, HumanMessage
+from PIL import Image
 
 import app.services.files as files_service
 import app.tools.figma as figma_module
@@ -263,6 +265,79 @@ def test_generate_image_tool_stores_image(monkeypatch, uploads):
     assert len(stored) == 1 and stored[0].name.endswith("_a-red-fox.png")
 
 
+def test_generate_image_bytes_enables_pollinations_quality_options(monkeypatch):
+    captured = {}
+    monkeypatch.setattr(
+        files_service,
+        "IMAGE_GENERATION_URL",
+        "https://image.pollinations.ai/prompt/{prompt}?width=1024&seed={seed}",
+    )
+
+    def fake_get(url, **kwargs):
+        captured["url"] = url
+        return _response(200, content=PNG, url=url)
+
+    monkeypatch.setattr(files_service.httpx, "get", fake_get)
+
+    assert files_service.generate_image_bytes("Goku") == PNG
+    assert "model=sana" in captured["url"]
+    assert "enhance=false" in captured["url"]
+    assert "quality=high" in captured["url"]
+    assert "guidance_scale=12" in captured["url"]
+    assert "nologo=true" in captured["url"]
+    assert "negative_prompt=" in captured["url"]
+    assert "photorealistic" in captured["url"]
+
+
+def test_generated_image_receives_devgpt_watermark():
+    source = BytesIO()
+    Image.new("RGB", (320, 240), "white").save(source, format="PNG")
+
+    branded = files_service.add_devgpt_watermark(source.getvalue())
+
+    with Image.open(BytesIO(branded)) as image:
+        assert image.size == (320, 240)
+        assert image.format == "PNG"
+        watermark_area = image.convert("RGB").crop((0, 175, 180, 240))
+        assert any(
+            pixel != (255, 255, 255)
+            for pixel in watermark_area.get_flattened_data()
+        )
+
+
+def test_generate_image_bytes_adds_ben_10_negative_constraints(monkeypatch):
+    captured = {}
+
+    def fake_get(url, **kwargs):
+        captured["url"] = url
+        return _response(200, content=PNG, url=url)
+
+    monkeypatch.setattr(files_service.httpx, "get", fake_get)
+
+    assert files_service.generate_image_bytes("canonical Ben 10") == PNG
+    assert "negative_prompt=" in captured["url"]
+    assert "adult%2C%20woman%2C%20girl" in captured["url"]
+    assert "missing%20Omnitrix" in captured["url"]
+
+
+def test_generate_image_bytes_retries_a_busy_provider(monkeypatch):
+    responses = iter(
+        [
+            _response(
+                402,
+                content=b'{"error":"Free limit. Retry after 12s"}',
+            ),
+            _response(200, content=PNG),
+        ]
+    )
+    delays = []
+    monkeypatch.setattr(files_service.httpx, "get", lambda *a, **k: next(responses))
+    monkeypatch.setattr(files_service.time, "sleep", delays.append)
+
+    assert files_service.generate_image_bytes("Goku") == PNG
+    assert delays == [12.75]
+
+
 def test_generate_image_tool_failures(monkeypatch, uploads):
     assert "conversation not found" in image_module.generate_image.invoke(
         {"prompt": "x"}, config={"configurable": {"thread_id": "missing"}}
@@ -440,4 +515,5 @@ def test_agent_binds_mode_tools_and_reasoning_effort(database, monkeypatch):
     assert "Mode: Thinking." in binds[1][1] and "Be kind." in binds[1][1]
     github_tools, github_kwargs = binds[2]
     assert "github_ci_status" in github_tools and github_kwargs == {}
-    assert binds[-1][1] == graph_module.SYSTEM_PROMPT
+    assert binds[-1][1].startswith(graph_module.SYSTEM_PROMPT)
+    assert "Current date:" in binds[-1][1]

@@ -163,12 +163,101 @@ def test_tool_registry_contains_all_expected_tools():
     assert stock_schema["properties"]["symbol"]["description"]
 
 
-def test_web_search_reports_missing_configuration(monkeypatch):
+def test_web_search_uses_keyless_fallback_without_configuration(monkeypatch):
     monkeypatch.setattr(web_search_module, "TAVILY_API_KEY", "")
-
-    assert web_search.invoke({"query": "latest AI news"}) == (
-        "Web search is not configured. Add TAVILY_API_KEY to backend/.env."
+    monkeypatch.setattr(
+        web_search_module,
+        "_general_web_search",
+        lambda query: {"provider": "fallback", "query": query},
     )
+
+    assert web_search.invoke({"query": "latest AI news"}) == {
+        "provider": "fallback",
+        "query": "latest AI news",
+    }
+
+
+def test_web_search_falls_back_when_tavily_rejects_key(monkeypatch):
+    class RejectedSearch:
+        def invoke(self, payload):
+            return {"error": ValueError("401 Unauthorized")}
+
+    monkeypatch.setattr(web_search_module, "TAVILY_API_KEY", "invalid-key")
+    monkeypatch.setattr(web_search_module, "_tavily_auth_rejected", False)
+    monkeypatch.setattr(web_search_module, "_get_tavily_search", RejectedSearch)
+    monkeypatch.setattr(
+        web_search_module,
+        "_general_web_search",
+        lambda query: {"provider": "fallback", "query": query},
+    )
+
+    result = web_search.invoke({"query": "current president"})
+
+    assert result == {"provider": "fallback", "query": "current president"}
+    assert web_search_module._tavily_auth_rejected is True
+
+
+def test_google_news_fallback_parses_live_results(monkeypatch):
+    class Response:
+        content = b"""<?xml version='1.0'?><rss><channel><item>
+          <title>Current &amp; verified</title>
+          <link>https://example.com/story</link>
+          <pubDate>Fri, 20 Nov 2026 10:00:00 GMT</pubDate>
+          <description>&lt;b&gt;Official&lt;/b&gt; update</description>
+        </item></channel></rss>"""
+
+        def raise_for_status(self):
+            return None
+
+    monkeypatch.setattr(web_search_module.httpx, "get", lambda *args, **kwargs: Response())
+
+    result = web_search_module._google_news_search("current fact")
+
+    assert result["provider"] == "Google News RSS fallback"
+    assert result["results"] == [
+        {
+            "title": "Current & verified",
+            "url": "https://example.com/story",
+            "published_date": "Fri, 20 Nov 2026 10:00:00 GMT",
+            "content": "Official update",
+        }
+    ]
+
+
+def test_general_web_fallback_parses_specialist_results(monkeypatch):
+    class Search:
+        def text(self, query, **kwargs):
+            assert query == "FACP intellectual disability"
+            assert kwargs["backend"] == "yahoo"
+            return [
+                {
+                    "title": "Functional Assessment Checklist for Programming",
+                    "href": "https://example.com/facp",
+                    "body": "An assessment tool used in special education.",
+                }
+            ]
+
+    monkeypatch.setattr(
+        web_search_module,
+        "DDGS",
+        lambda **kwargs: Search(),
+    )
+
+    result = web_search_module._general_web_search(
+        "FACP intellectual disability\nPrefer official sources."
+    )
+
+    assert result == {
+        "provider": "General web search fallback",
+        "query": "FACP intellectual disability",
+        "results": [
+            {
+                "title": "Functional Assessment Checklist for Programming",
+                "url": "https://example.com/facp",
+                "content": "An assessment tool used in special education.",
+            }
+        ],
+    }
 
 
 def test_weather_reports_missing_configuration(monkeypatch):

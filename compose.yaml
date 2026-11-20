@@ -6,6 +6,12 @@ services:
     restart: unless-stopped
     env_file:
       - ./backend/.env
+    environment:
+      # Keep local Docker credentials independent from any hosted PostgreSQL
+      # settings stored in backend/.env.
+      POSTGRES_DB: devgpt
+      POSTGRES_USER: devgpt
+      POSTGRES_PASSWORD: devgpt_local_password
     ports:
       - "${POSTGRES_HOST_PORT:-5435}:5432"
     volumes:
@@ -27,6 +33,13 @@ services:
     environment:
       POSTGRES_HOST: postgres
       POSTGRES_PORT: "5432"
+      POSTGRES_DB: devgpt
+      POSTGRES_USER: devgpt
+      POSTGRES_PASSWORD: devgpt_local_password
+      # The bundled local PostgreSQL container does not expose TLS. Override
+      # any production SSL settings that may be present in backend/.env.
+      POSTGRES_SSLMODE: disable
+      POSTGRES_CHANNEL_BINDING: disable
       USE_POSTGRES_COMPONENTS: "true"
     ports:
       - "${BACKEND_PORT:-8080}:8080"
