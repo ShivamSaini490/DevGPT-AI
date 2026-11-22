@@ -92,7 +92,7 @@ def test_current_info_router_skips_ordinary_question(database):
 
 
 def test_automatic_tool_router_forces_image_generation(database):
-    from langchain_core.messages import HumanMessage, ToolMessage
+    from langchain_core.messages import AIMessage, HumanMessage, ToolMessage
     import app.agents.graph as graph_module
 
     routed = graph_module._automatic_tool_router(
@@ -101,9 +101,21 @@ def test_automatic_tool_router_forces_image_generation(database):
             "mode": "image",
         }
     )
-    call = routed["messages"][0].tool_calls[0]
+    prompt = graph_module._image_generation_prompt("create an image of goku")
+    image_call = AIMessage(
+        content="",
+        tool_calls=[
+            {
+                "name": "generate_image",
+                "args": {"prompt": prompt},
+                "id": "image-1",
+                "type": "tool_call",
+            }
+        ],
+    )
+    call = image_call.tool_calls[0]
 
-    assert routed["auto_tool_call"] is True
+    assert routed["auto_tool_call"] is False
     assert routed["auto_image_generation"] is True
     assert call["name"] == "generate_image"
     assert "create an image of goku" in call["args"]["prompt"]
@@ -113,17 +125,20 @@ def test_automatic_tool_router_forces_image_generation(database):
     assert "Single centered front-facing" in call["args"]["prompt"]
     assert "circular frame" in call["args"]["prompt"]
     assert "STRICT flat 2D cel-animation" in call["args"]["prompt"]
-    assert "accurate anatomy" in call["args"]["prompt"]
-    assert graph_module._route_automatic_tool(routed) == "tools"
+    assert "correct anatomy" in call["args"]["prompt"]
+    assert graph_module._route_automatic_tool(routed) == "image_prompt_rewriter"
 
     state = {
         "mode": "image",
         "auto_image_generation": True,
         "messages": [
             HumanMessage(content="create an image of goku"),
-            routed["messages"][0],
+            image_call,
             ToolMessage(
-                content="IMAGE_URL: /files/generated/content",
+                content=(
+                    "IMAGE_URL: /files/generated/content\n"
+                    "IMAGE_PROVIDER: Hugging Face FLUX.1-schnell"
+                ),
                 tool_call_id=call["id"],
                 name="generate_image",
             ),
@@ -131,7 +146,8 @@ def test_automatic_tool_router_forces_image_generation(database):
     }
     assert graph_module._route_after_tools(state) == "image_confirmation"
     confirmation = graph_module._image_confirmation_node(state)
-    assert "created the image" in confirmation["messages"][0].content
+    assert "Generated with" in confirmation["messages"][0].content
+    assert "Hugging Face FLUX.1-schnell" in confirmation["messages"][0].content
 
 
 def test_image_followup_inherits_previous_prompt_and_character_details(database):
@@ -165,7 +181,10 @@ def test_image_followup_inherits_previous_prompt_and_character_details(database)
     }
 
     routed = graph_module._automatic_tool_router(state)
-    prompt = routed["messages"][0].tool_calls[0]["args"]["prompt"]
+    prompt = graph_module._image_generation_prompt(
+        "I want it in supper saiyan 3",
+        "create an image of Goku",
+    )
 
     assert routed["auto_image_generation"] is True
     assert "Original image request: create an image of Goku" in prompt
@@ -175,37 +194,18 @@ def test_image_followup_inherits_previous_prompt_and_character_details(database)
     assert "blue-white lightning" in prompt
     assert "realism" in prompt
 
-    next_state = {
-        "mode": "",
-        "messages": state["messages"]
-        + routed["messages"]
-        + [
-            ToolMessage(
-                content="IMAGE_URL: /files/two/content",
-                tool_call_id=routed["messages"][0].tool_calls[0]["id"],
-                name="generate_image",
-            ),
-            AIMessage(content="Done"),
-            HumanMessage(content="make the background blue"),
-        ],
-    }
-    next_routed = graph_module._automatic_tool_router(next_state)
-    next_prompt = next_routed["messages"][0].tool_calls[0]["args"]["prompt"]
+    next_prompt = graph_module._image_generation_prompt(
+        "make the background blue",
+        prompt.rsplit(graph_module._IMAGE_USER_REQUEST_MARKER, 1)[1],
+    )
     assert next_prompt.count("STRICT flat 2D cel-animation") == 1
     assert "Original image request: Original image request:" not in next_prompt
 
 
 def test_image_prompt_preserves_canonical_ben_10_identity(database):
-    from langchain_core.messages import HumanMessage
     import app.agents.graph as graph_module
 
-    routed = graph_module._automatic_tool_router(
-        {
-            "messages": [HumanMessage(content="create a image of ben 10")],
-            "mode": "image",
-        }
-    )
-    prompt = routed["messages"][0].tool_calls[0]["args"]["prompt"]
+    prompt = graph_module._image_generation_prompt("create a image of ben 10")
 
     assert "canonical Ben Tennyson" in prompt
     assert "10-year-old boy" in prompt
@@ -218,6 +218,41 @@ def test_image_prompt_preserves_canonical_ben_10_identity(database):
     assert "raised left forearm" in prompt
     assert "Green appears only on the Omnitrix dial and cargo pants" in prompt
     assert "No adult, woman, girl, diagonal stripe, green shirt" in prompt
+
+
+def test_vegeta_prompt_seed_and_groq_instructions_require_visual_details(database):
+    import app.agents.graph as graph_module
+
+    prompt = graph_module._image_generation_prompt(
+        "create an image of vegeta from dragon ball"
+    )
+
+    assert "black hair swept straight up" in prompt
+    assert "M-shaped widow's peak" in prompt
+    assert "white chest armor" in prompt
+    assert "gold shoulder guards" in prompt
+    assert "white gloves and white boots" in prompt
+    assert "arms-crossed pose" in prompt
+    assert "official Dragon Ball Z anime key art" in prompt
+    assert "sharp focus" in prompt and "4k" in prompt
+    assert "Do not invent scars" in graph_module._IMAGE_PROMPT_REWRITE_SYSTEM
+    assert "five fingers on each hand" in graph_module._IMAGE_PROMPT_REWRITE_SYSTEM
+    assert graph_module._replace_known_character_names(
+        "Vegetan, muscular Saiyan prince with swept-up black hair",
+        "create an image of vegeta from dragon ball",
+    ).startswith("the Saiyan prince, muscular")
+    assert graph_module._replace_known_character_names(
+        "Veget a, muscular Saiyan prince with hair unlike Goku's",
+        "create an image of vegeta from dragon ball",
+    ) == (
+        "the Saiyan prince, muscular Saiyan prince with hair unlike "
+        "the orange-gi martial-arts hero's"
+    )
+    constrained = graph_module._ensure_image_quality_constraints(
+        "Vegeta in official Dragon Ball Z anime key art"
+    )
+    assert "five fingers on each hand" in constrained
+    assert constrained.endswith("no watermark.")
 
 
 def test_image_confirmation_uses_only_the_current_turn_result(database):

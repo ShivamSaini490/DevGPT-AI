@@ -13,7 +13,7 @@ The **+** button in the composer offers:
 | --- | --- | --- |
 | Add photos & files | Attach images (read by a vision model) and documents (indexed for search). Paste or drag-and-drop also work. | `GROQ_API_KEY`, `GOOGLE_API_KEY` for documents |
 | Add from library | Re-attach any file from your earlier chats | — |
-| Create image | Generates an image from your description | `IMAGE_GENERATION_URL` (free default) |
+| Create image | Generates an image from your description | Cloudflare Workers AI credentials; optional `HF_TOKEN` fallback |
 | Web search | Always searches the web and cites sources | `TAVILY_API_KEY` |
 | Work in a project | Groups chats; project instructions apply to every chat in it | — |
 | Deep research | Several searches, then a structured report with sources | `TAVILY_API_KEY` |

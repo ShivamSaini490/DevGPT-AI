@@ -234,6 +234,59 @@ _IMAGE_QUALITY_SUFFIX = (
     "signature, and no watermark."
 )
 _IMAGE_USER_REQUEST_MARKER = "\nUser image request: "
+_IMAGE_PROMPT_REWRITE_SYSTEM = """
+Rewrite the user's image request as one detailed English text-to-image prompt.
+Preserve the requested identity and intent. Specify the subject, pose, facial
+expression, clothing, art style, lighting, background, camera angle,
+composition, and colour palette. End with quality language such as highly
+detailed, sharp focus, vibrant colors, official anime key visual, and 4k when
+appropriate. Describe named characters visually instead of relying on the name.
+For Vegeta, explicitly require black hair swept straight up in a flame-like
+shape with a prominent M-shaped widow's peak that is clearly different from
+Goku's hair, a stern scowl, blue Saiyan battle suit, white chest armor with gold
+shoulder guards, white gloves and boots, and an arms-crossed pose. For Goku,
+explicitly require spiky black hair with bangs, an orange gi with blue
+undershirt, blue wristbands and a blue belt. Use official Dragon Ball Z anime
+key art when appropriate. Phrase constraints positively for FLUX: correct
+anatomy, five fingers on each hand, clean background, no text, no logo, no
+signature, no watermark. Do not invent scars or change canonical clothing.
+Return only the finished prompt, with no explanation or heading.
+""".strip()
+
+
+def _replace_known_character_names(prompt: str, request: str) -> str:
+    """Make the visual description, rather than a name, drive generation."""
+    known_characters = (
+        (r"\bvegeta\b", "the Saiyan prince", r"\bVeget\s*a[A-Za-z]*\b"),
+        (
+            r"\b(?:son\s+)?goku\b",
+            "the orange-gi martial-arts hero",
+            r"\bGo\s*ku[A-Za-z]*\b",
+        ),
+    )
+    result = prompt
+    if not any(
+        re.search(request_pattern, request, re.I)
+        for request_pattern, _visual_reference, _prompt_pattern in known_characters
+    ):
+        return result
+    for _request_pattern, visual_reference, prompt_pattern in known_characters:
+        result = re.sub(
+            prompt_pattern,
+            visual_reference,
+            result,
+            flags=re.I,
+        )
+    return result
+
+
+def _ensure_image_quality_constraints(prompt: str) -> str:
+    """Keep Cloudflare-compatible quality constraints on every enriched prompt."""
+    prompt = prompt.rstrip().rstrip(".")
+    return (
+        f"{prompt}. Correct anatomy, five fingers on each "
+        "hand, clean background, no text, no logo, no signature, no watermark."
+    )
 
 
 def _previous_image_prompt(messages: list[BaseMessage]) -> str:
@@ -286,6 +339,7 @@ def _image_generation_prompt(
 
     details = ""
     is_goku = bool(re.search(r"\b(?:son\s+)?goku\b", request, re.I))
+    is_vegeta = bool(re.search(r"\bvegeta\b", request, re.I))
     is_ben_10 = bool(re.search(r"\bben\s*(?:10|ten)\b", request, re.I))
     is_super_saiyan_3 = bool(re.search(
         r"\b(?:sup(?:er|per)\s+saiyan\s*3|ssj\s*3)\b",
@@ -308,11 +362,26 @@ def _image_generation_prompt(
             "STRICT flat 2D cel-animation of canonical Son Goku from Dragon "
             "Ball Z. Single centered front-facing waist-up character: large "
             "jet-black spiky hair, round open black anime eyes, small nose, "
-            "cheerful expression, athletic build, and accurate anatomy. His "
+            "cheerful expression, athletic build, correct anatomy and five "
+            "fingers on each hand. His "
             "bright orange gi must dominate the torso; dark blue appears only "
             "on the undershirt, belt and wristbands. Clean black outlines, flat "
             "saturated colors. No realistic face, angry scowl, 3D, black gi, "
             "cloak, circular frame, moon, collage, text, signature, or watermark."
+        )
+    elif is_vegeta:
+        details = (
+            "Canonical Vegeta from Dragon Ball Z, black hair swept straight up "
+            "in a flame-like shape with a prominent M-shaped widow's peak, "
+            "clearly different from Goku's hair, stern scowl, muscular body "
+            "with accurate anatomy, wearing a fitted royal-blue Saiyan battle "
+            "suit with white chest armor and gold shoulder guards, white gloves "
+            "and white boots. Correct anatomy with five fingers on each hand. Confident "
+            "arms-crossed pose, three-quarter full-body composition, official "
+            "Dragon Ball Z anime key art, clean linework, crisp cel shading, "
+            "dramatic rim lighting, bright rocky alien landscape, highly detailed, "
+            "sharp focus, vibrant colors, 4k. No scars, blur, darkness, text, logo, "
+            "signature, watermark, deformed hands, extra fingers or bad anatomy."
         )
     elif is_ben_10:
         details = (
@@ -320,8 +389,8 @@ def _image_generation_prompt(
             "from the original 2005 Ben 10 series. Exactly one 10-year-old boy "
             "with child proportions, short tousled brown hair, green eyes, and a "
             "friendly determined expression. He wears the original outfit: a "
-            "white short-sleeve crew-neck T-shirt with one bold black vertical "
-            "center stripe from collar to hem and black sleeve trim, olive-green "
+            "white short-sleeve T-shirt with a crew neck and one solid black "
+            "vertical stripe from collar to hem and black sleeve trim, olive-green "
             "cargo pants, and black-and-white sneakers. Green appears only on the "
             "Omnitrix dial and cargo pants, never on the shirt. Show both arms and "
             "his raised left forearm; the large black-and-green Omnitrix is clearly "
@@ -430,26 +499,8 @@ def _automatic_tool_router(state: AgentState):
     if image_request:
         return {
             "auto_web_search": False,
-            "auto_tool_call": True,
+            "auto_tool_call": False,
             "auto_image_generation": True,
-            "messages": [
-                AIMessage(
-                    content="",
-                    tool_calls=[
-                        {
-                            "name": "generate_image",
-                            "args": {
-                                "prompt": _image_generation_prompt(
-                                    message,
-                                    previous_image_prompt,
-                                )
-                            },
-                            "id": f"auto-image-{uuid4()}",
-                            "type": "tool_call",
-                        }
-                    ],
-                )
-            ],
         }
 
     should_search = needs_live_web_search(message, mode)
@@ -482,6 +533,8 @@ def _automatic_tool_router(state: AgentState):
 
 
 def _route_automatic_tool(state: AgentState) -> str:
+    if state.get("auto_image_generation"):
+        return "image_prompt_rewriter"
     return "tools" if state.get("auto_tool_call") else "chatbot"
 
 
@@ -521,7 +574,9 @@ def _route_after_tools(state: AgentState) -> str:
 def _image_confirmation_node(state: AgentState):
     result = _current_image_tool_result(state["messages"])
     if "IMAGE_URL:" in result:
-        content = "Done — I created the image and displayed it above."
+        provider_match = re.search(r"IMAGE_PROVIDER:\s*([^\n]+)", result)
+        provider = provider_match.group(1).strip() if provider_match else "the image provider"
+        content = f"Generated with {provider}. The image is displayed above."
     else:
         content = (
             result
@@ -617,10 +672,62 @@ def build_agent(model_name: str):
             raise last_rate_limit_error
         raise RuntimeError("All configured chat models are cooling down.")
 
+    def image_prompt_rewriter_node(state: AgentState):
+        request = _latest_human_text(state["messages"])
+        logger.warning("Image request received user_request=%r", request)
+        previous_prompt = _previous_image_prompt(state["messages"])
+        fallback_prompt = _image_generation_prompt(request, previous_prompt)
+        messages = [
+            SystemMessage(content=_IMAGE_PROMPT_REWRITE_SYSTEM),
+            HumanMessage(content=fallback_prompt),
+        ]
+        try:
+            response = model_for(
+                "image_prompt_rewrite",
+                [],
+                selected_model,
+            ).invoke(messages)
+            rewritten = (
+                re.sub(r"\s+", " ", response.content).strip()
+                if isinstance(response.content, str)
+                else ""
+            )
+        except Exception:
+            logger.exception("Groq image prompt rewrite failed")
+            raise RuntimeError(
+                "Image prompt enrichment failed; no image provider was called."
+            )
+
+        if len(rewritten) < 80:
+            raise RuntimeError(
+                "Image prompt enrichment returned an incomplete prompt; no image "
+                "provider was called."
+            )
+        prompt = _ensure_image_quality_constraints(
+            _replace_known_character_names(rewritten, request)
+        )
+        logger.warning("Image prompt enrichment completed final_prompt=%r", prompt)
+        return {
+            "messages": [
+                AIMessage(
+                    content="",
+                    tool_calls=[
+                        {
+                            "name": "generate_image",
+                            "args": {"prompt": prompt},
+                            "id": f"auto-image-{uuid4()}",
+                            "type": "tool_call",
+                        }
+                    ],
+                )
+            ]
+        }
+
     tool_node = ToolNode(all_tools, wrap_tool_call=_truncate_tool_call_result)
 
     workflow = StateGraph(AgentState)
     workflow.add_node("automatic_tool_router", _automatic_tool_router)
+    workflow.add_node("image_prompt_rewriter", image_prompt_rewriter_node)
     workflow.add_node("chatbot", chatbot_node)
     workflow.add_node("tools", tool_node)
     workflow.add_node("image_confirmation", _image_confirmation_node)
@@ -628,8 +735,13 @@ def build_agent(model_name: str):
     workflow.add_conditional_edges(
         "automatic_tool_router",
         _route_automatic_tool,
-        {"tools": "tools", "chatbot": "chatbot"},
+        {
+            "image_prompt_rewriter": "image_prompt_rewriter",
+            "tools": "tools",
+            "chatbot": "chatbot",
+        },
     )
+    workflow.add_edge("image_prompt_rewriter", "tools")
     workflow.add_conditional_edges("chatbot", tools_condition)
     workflow.add_conditional_edges(
         "tools",

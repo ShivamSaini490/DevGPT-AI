@@ -34,3 +34,6 @@ coverage.xml
 
 # Uploaded files
 backend/uploads/
+
+# Generated images
+outputs/images/

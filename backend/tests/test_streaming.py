@@ -51,6 +51,10 @@ def test_should_stream_normal_ai_chunks_only():
         {"langgraph_node": "tools"},
     )
     assert not should_stream_chunk(
+        AIMessageChunk(content="internal rewritten prompt"),
+        {"langgraph_node": "image_prompt_rewriter"},
+    )
+    assert not should_stream_chunk(
         AIMessageChunk(
             content="",
             tool_calls=[{"name": "calculator", "args": {}, "id": "call-1"}],

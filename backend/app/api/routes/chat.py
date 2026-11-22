@@ -201,6 +201,8 @@ async def chat_stream(
                     segment_id = None
                     segment_start = len(final_answer)
                 elif isinstance(chunk, (AIMessage, AIMessageChunk)):
+                    node_name = str(metadata.get("langgraph_node", "")).lower()
+                    rewriting_image_prompt = node_name == "image_prompt_rewriter"
                     chunk_id = getattr(chunk, "id", None)
                     if chunk_id and chunk_id != segment_id:
                         segment_id = chunk_id
@@ -216,7 +218,7 @@ async def chat_stream(
                         yield sse_data({"tool": name})
 
                     reasoning = extract_reasoning_from_chunk(chunk)
-                    if reasoning:
+                    if reasoning and not rewriting_image_prompt:
                         yield sse_data({"reasoning": reasoning})
 
                 if not should_stream_chunk(chunk, metadata):

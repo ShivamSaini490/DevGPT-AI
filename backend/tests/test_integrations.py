@@ -1,7 +1,9 @@
 """GitHub, Figma, image generation, vision and library-copy behaviour (no network)."""
 
+import base64
 import json
 from io import BytesIO
+from pathlib import Path
 
 import httpx
 import pytest
@@ -9,6 +11,7 @@ from langchain_core.messages import AIMessage, HumanMessage
 from PIL import Image
 
 import app.services.files as files_service
+import app.services.image_generation as image_service
 import app.tools.figma as figma_module
 import app.tools.github as github_module
 import app.tools.image_generation as image_module
@@ -20,6 +23,12 @@ from app.db.session import SessionLocal
 CLIENT_ID = "11111111-1111-4111-8111-111111111111"
 PNG = b"\x89PNG\r\n\x1a\n" + b"\x00" * 32
 CONFIG = {"configurable": {"thread_id": "t-int"}}
+
+
+def _valid_png() -> bytes:
+    output = BytesIO()
+    Image.new("RGB", (32, 32), "red").save(output, format="PNG")
+    return output.getvalue()
 
 
 def _response(status, payload=None, content=None, url="https://example.test"):
@@ -36,6 +45,13 @@ def uploads(monkeypatch, tmp_path):
         files_service, "add_document_to_rag", lambda file_path, thread_id: {"chunks": 1}
     )
     return tmp_path
+
+
+@pytest.fixture
+def generated_images(monkeypatch, tmp_path_factory):
+    path = tmp_path_factory.mktemp("generated") / "outputs" / "images"
+    monkeypatch.setattr(image_service, "GENERATED_IMAGES_DIR", path)
+    return path
 
 
 # ---------- GitHub ----------
@@ -252,104 +268,343 @@ def test_figma_node_request_and_errors(monkeypatch):
 # ---------- Image generation & vision ----------
 
 
-def test_generate_image_tool_stores_image(monkeypatch, uploads):
+def test_generate_image_tool_stores_image(monkeypatch, uploads, generated_images):
     create_or_update_conversation("t-int", "hi", CLIENT_ID)
     monkeypatch.setattr(
-        files_service.httpx, "get", lambda url, **kwargs: _response(200, content=PNG, url=url)
+        image_service,
+        "_generate_image_bytes",
+        lambda prompt: (_valid_png(), image_service.CLOUDFLARE_FLUX_PROVIDER),
     )
 
     result = image_module.generate_image.invoke({"prompt": "A red fox"}, config=CONFIG)
 
     assert result.startswith("IMAGE_URL: /files/")
+    assert "IMAGE_PROVIDER: Cloudflare Workers AI FLUX.1-schnell" in result
     stored = list(uploads.iterdir())
     assert len(stored) == 1 and stored[0].name.endswith("_a-red-fox.png")
+    assert len(list(generated_images.iterdir())) == 1
 
 
-def test_generate_image_bytes_enables_pollinations_quality_options(monkeypatch):
-    captured = {}
-    monkeypatch.setattr(
-        files_service,
-        "IMAGE_GENERATION_URL",
-        "https://image.pollinations.ai/prompt/{prompt}?width=1024&seed={seed}",
-    )
-
-    def fake_get(url, **kwargs):
-        captured["url"] = url
-        return _response(200, content=PNG, url=url)
-
-    monkeypatch.setattr(files_service.httpx, "get", fake_get)
-
-    assert files_service.generate_image_bytes("Goku") == PNG
-    assert "model=sana" in captured["url"]
-    assert "enhance=false" in captured["url"]
-    assert "quality=high" in captured["url"]
-    assert "guidance_scale=12" in captured["url"]
-    assert "nologo=true" in captured["url"]
-    assert "negative_prompt=" in captured["url"]
-    assert "photorealistic" in captured["url"]
-
-
-def test_generated_image_receives_devgpt_watermark():
+def test_saved_image_is_not_modified_with_a_devgpt_watermark(
+    monkeypatch,
+    generated_images,
+):
     source = BytesIO()
     Image.new("RGB", (320, 240), "white").save(source, format="PNG")
+    monkeypatch.setattr(
+        image_service,
+        "_generate_image_bytes",
+        lambda prompt: (source.getvalue(), "test provider"),
+    )
 
-    branded = files_service.add_devgpt_watermark(source.getvalue())
+    path, provider = image_service.generate_image_with_provider("clean image")
 
-    with Image.open(BytesIO(branded)) as image:
+    assert provider == "test provider"
+    with Image.open(path) as image:
         assert image.size == (320, 240)
-        assert image.format == "PNG"
-        watermark_area = image.convert("RGB").crop((0, 175, 180, 240))
-        assert any(
-            pixel != (255, 255, 255)
-            for pixel in watermark_area.get_flattened_data()
-        )
+        assert set(image.convert("RGB").get_flattened_data()) == {(255, 255, 255)}
 
 
-def test_generate_image_bytes_adds_ben_10_negative_constraints(monkeypatch):
-    captured = {}
-
-    def fake_get(url, **kwargs):
-        captured["url"] = url
-        return _response(200, content=PNG, url=url)
-
-    monkeypatch.setattr(files_service.httpx, "get", fake_get)
-
-    assert files_service.generate_image_bytes("canonical Ben 10") == PNG
-    assert "negative_prompt=" in captured["url"]
-    assert "adult%2C%20woman%2C%20girl" in captured["url"]
-    assert "missing%20Omnitrix" in captured["url"]
-
-
-def test_generate_image_bytes_retries_a_busy_provider(monkeypatch):
+def test_image_provider_retries_twice(monkeypatch):
     responses = iter(
         [
-            _response(
-                402,
-                content=b'{"error":"Free limit. Retry after 12s"}',
+            image_service.ProviderRequestError(
+                image_service.ProviderFailure("test", 503, "busy")
             ),
-            _response(200, content=PNG),
+            image_service.ProviderRequestError(
+                image_service.ProviderFailure("test", 503, "still busy")
+            ),
+            _valid_png(),
         ]
     )
     delays = []
-    monkeypatch.setattr(files_service.httpx, "get", lambda *a, **k: next(responses))
-    monkeypatch.setattr(files_service.time, "sleep", delays.append)
 
-    assert files_service.generate_image_bytes("Goku") == PNG
-    assert delays == [12.75]
+    def fake_request(prompt, model):
+        result = next(responses)
+        if isinstance(result, Exception):
+            raise result
+        return result
+
+    monkeypatch.setattr(image_service, "_cloudflare_image", fake_request)
+    monkeypatch.setattr(image_service.time, "sleep", delays.append)
+    data = image_service._download_cloudflare_model(
+        "prompt", image_service.CLOUDFLARE_IMAGE_MODEL
+    )
+
+    assert data == _valid_png()
+    assert delays == [1.0, 2.0]
 
 
-def test_generate_image_tool_failures(monkeypatch, uploads):
+def test_image_provider_respects_free_limit_retry_delay(monkeypatch):
+    response = _response(429, content=b'{"error":"busy"}')
+    response.headers["Retry-After"] = "42"
+    responses = iter(
+        [
+            image_service.ProviderRequestError(
+                image_service.ProviderFailure("test", 429, "busy")
+            ),
+            _valid_png(),
+        ]
+    )
+    delays = []
+
+    def fake_request(prompt, model):
+        result = next(responses)
+        if isinstance(result, Exception):
+            result.response = response
+            raise result
+        return result
+
+    monkeypatch.setattr(image_service, "_cloudflare_image", fake_request)
+    monkeypatch.setattr(image_service.time, "sleep", delays.append)
+
+    data = image_service._download_cloudflare_model(
+        "prompt", image_service.CLOUDFLARE_IMAGE_MODEL
+    )
+
+    assert data == _valid_png()
+    assert delays == [1.0]
+
+
+def test_hugging_face_is_used_when_cloudflare_is_not_configured(monkeypatch):
+    monkeypatch.setattr(image_service, "HF_TOKEN", "hf-test-token")
+    monkeypatch.setattr(image_service, "CLOUDFLARE_ACCOUNT_ID", "")
+    monkeypatch.setattr(image_service, "CLOUDFLARE_API_TOKEN", "")
+    monkeypatch.setattr(
+        image_service,
+        "_hugging_face_image",
+        lambda prompt: _valid_png(),
+    )
+    data, provider = image_service._generate_image_bytes("a red apple")
+
+    assert data == _valid_png()
+    assert provider == "Hugging Face FLUX.1-schnell"
+
+
+def test_all_provider_failures_are_returned_without_anonymous_fallback(monkeypatch):
+    calls = 0
+    monkeypatch.setattr(image_service, "HF_TOKEN", "hf-test-token")
+    monkeypatch.setattr(image_service, "CLOUDFLARE_ACCOUNT_ID", "")
+    monkeypatch.setattr(image_service, "CLOUDFLARE_API_TOKEN", "")
+
+    def failed_primary(prompt):
+        nonlocal calls
+        calls += 1
+        raise RuntimeError("unavailable")
+
+    monkeypatch.setattr(image_service, "_hugging_face_image", failed_primary)
+
+    with pytest.raises(image_service.ImageGenerationError) as exc_info:
+        image_service._generate_image_bytes("a red apple")
+
+    message = str(exc_info.value)
+    assert "Cloudflare Workers AI FLUX.1-schnell [status not-configured]" in message
+    assert "Cloudflare Workers AI SDXL [status not-configured]" in message
+    assert "Hugging Face FLUX.1-schnell [status error]: unavailable" in message
+    assert calls == 1
+
+
+def test_cloudflare_is_primary_when_both_providers_are_configured(monkeypatch):
+    monkeypatch.setattr(image_service, "HF_TOKEN", "hf-test-token")
+    monkeypatch.setattr(image_service, "CLOUDFLARE_ACCOUNT_ID", "account")
+    monkeypatch.setattr(image_service, "CLOUDFLARE_API_TOKEN", "token")
+    monkeypatch.setattr(
+        image_service,
+        "_download_cloudflare_model",
+        lambda prompt, model: _valid_png(),
+    )
+    monkeypatch.setattr(
+        image_service,
+        "_download_hugging_face",
+        lambda prompt: pytest.fail("Hugging Face fallback was used"),
+    )
+    data, provider = image_service._generate_image_bytes("a red apple")
+
+    assert data == _valid_png()
+    assert provider == "Cloudflare Workers AI FLUX.1-schnell"
+
+
+def test_cloudflare_flux_1_request_uses_json_and_decodes_base64(monkeypatch):
+    captured = {}
+    monkeypatch.setattr(image_service, "CLOUDFLARE_ACCOUNT_ID", "account-id")
+    monkeypatch.setattr(image_service, "CLOUDFLARE_API_TOKEN", "secret-token")
+
+    def fake_post(url, **kwargs):
+        captured["url"] = url
+        captured.update(kwargs)
+        encoded = base64.b64encode(_valid_png()).decode("ascii")
+        return _response(200, {"result": {"image": encoded}}, url=url)
+
+    monkeypatch.setattr(image_service.httpx, "post", fake_post)
+
+    data = image_service._cloudflare_image("detailed prompt")
+
+    assert data == _valid_png()
+    assert captured["url"].endswith(
+        "/accounts/account-id/ai/run/@cf/black-forest-labs/flux-1-schnell"
+    )
+    assert captured["headers"] == {"Authorization": "Bearer secret-token"}
+    assert captured["json"]["prompt"] == "detailed prompt"
+    assert captured["json"]["steps"] == 8
+    assert "seed" not in captured["json"]
+    assert "files" not in captured
+    assert captured["timeout"] == 60.0
+
+
+def test_cloudflare_uses_current_fallback_model(monkeypatch):
+    calls = []
+
+    def fake_cloudflare(prompt, model):
+        calls.append(model)
+        if model == image_service.CLOUDFLARE_IMAGE_MODEL:
+            raise image_service.ProviderRequestError(
+                image_service.ProviderFailure(
+                    image_service.CLOUDFLARE_FLUX_PROVIDER,
+                    404,
+                    "model not found",
+                )
+            )
+        return _valid_png()
+
+    monkeypatch.setattr(image_service, "_download_cloudflare_model", fake_cloudflare)
+
+    data, model = image_service._download_cloudflare("detailed prompt")
+
+    assert data == _valid_png()
+    assert model == image_service.CLOUDFLARE_FALLBACK_IMAGE_MODEL
+    assert calls == [
+        image_service.CLOUDFLARE_IMAGE_MODEL,
+        image_service.CLOUDFLARE_FALLBACK_IMAGE_MODEL,
+    ]
+
+
+def test_cloudflare_failure_preserves_status_and_body(monkeypatch):
+    monkeypatch.setattr(image_service, "CLOUDFLARE_ACCOUNT_ID", "account-id")
+    monkeypatch.setattr(image_service, "CLOUDFLARE_API_TOKEN", "secret-token")
+    monkeypatch.setattr(
+        image_service.httpx,
+        "post",
+        lambda url, **kwargs: _response(
+            403,
+            {"errors": [{"message": "permission denied"}]},
+            url=url,
+        ),
+    )
+
+    with pytest.raises(image_service.ProviderRequestError) as exc_info:
+        image_service._cloudflare_image("prompt")
+
+    assert exc_info.value.failure.status == 403
+    assert "permission denied" in exc_info.value.failure.reason
+    assert "secret-token" not in str(exc_info.value)
+
+
+def test_cloudflare_sdxl_uses_json_and_reads_raw_image(monkeypatch):
+    captured = {}
+    monkeypatch.setattr(image_service, "CLOUDFLARE_ACCOUNT_ID", "account-id")
+    monkeypatch.setattr(image_service, "CLOUDFLARE_API_TOKEN", "secret-token")
+
+    def fake_post(url, **kwargs):
+        captured["url"] = url
+        captured.update(kwargs)
+        return _response(200, content=_valid_png(), url=url)
+
+    monkeypatch.setattr(image_service.httpx, "post", fake_post)
+
+    data = image_service._cloudflare_image(
+        "detailed prompt", image_service.CLOUDFLARE_FALLBACK_IMAGE_MODEL
+    )
+
+    assert data == _valid_png()
+    assert captured["url"].endswith(
+        "/ai/run/@cf/stabilityai/stable-diffusion-xl-base-1.0"
+    )
+    assert captured["json"] == {"prompt": "detailed prompt"}
+    assert captured["timeout"] == 60.0
+
+
+def test_hugging_face_uses_quality_options_and_60_second_timeout(monkeypatch):
+    captured = {}
+
+    class FakeClient:
+        def __init__(self, **kwargs):
+            captured["client"] = kwargs
+
+        def text_to_image(self, prompt, **kwargs):
+            captured["prompt"] = prompt
+            captured["options"] = kwargs
+            return Image.open(BytesIO(_valid_png()))
+
+    monkeypatch.setattr(image_service, "HF_TOKEN", "hf-test-token")
+    monkeypatch.setattr(image_service, "InferenceClient", FakeClient)
+
+    data = image_service._hugging_face_image("detailed Goku prompt")
+
+    assert image_service._is_valid_image(data)
+    assert captured["client"] == {
+        "api_key": "hf-test-token",
+        "provider": "auto",
+        "timeout": 60.0,
+    }
+    assert captured["prompt"] == "detailed Goku prompt"
+    assert captured["options"]["model"] == "black-forest-labs/FLUX.1-schnell"
+    assert captured["options"]["width"] == 1024
+    assert captured["options"]["height"] == 1024
+    assert "watermark" in captured["options"]["negative_prompt"]
+
+
+def test_hugging_face_503_model_loading_waits_and_retries(monkeypatch):
+    calls = 0
+    delays = []
+
+    class ModelLoadingError(RuntimeError):
+        def __init__(self):
+            super().__init__("model loading")
+            self.response = _response(503, {"estimated_time": 7.5})
+
+    def loading_then_ready(prompt):
+        nonlocal calls
+        calls += 1
+        if calls == 1:
+            raise ModelLoadingError()
+        return _valid_png()
+
+    monkeypatch.setattr(image_service, "_hugging_face_image", loading_then_ready)
+    monkeypatch.setattr(image_service.time, "sleep", delays.append)
+
+    assert image_service._download_hugging_face("prompt") == _valid_png()
+    assert calls == 2
+    assert delays == [1.0]
+
+
+def test_generate_red_apple_saves_a_valid_image(monkeypatch, generated_images):
+    monkeypatch.setattr(
+        image_service,
+        "_generate_image_bytes",
+        lambda prompt: (_valid_png(), image_service.CLOUDFLARE_FLUX_PROVIDER),
+    )
+
+    path = image_service.generate_image("a red apple on a wooden table")
+
+    assert generated_images in Path(path).parents
+    with Image.open(path) as image:
+        image.verify()
+
+
+def test_generate_image_tool_failures(monkeypatch, uploads, generated_images):
     assert "conversation not found" in image_module.generate_image.invoke(
         {"prompt": "x"}, config={"configurable": {"thread_id": "missing"}}
     )
 
     create_or_update_conversation("t-int", "hi", CLIENT_ID)
-    monkeypatch.setattr(
-        files_service.httpx, "get", lambda url, **kwargs: _response(200, content=b"<html>", url=url)
-    )
-    assert "did not return an image" in image_module.generate_image.invoke(
+    monkeypatch.setattr(image_service, "HF_TOKEN", "")
+    monkeypatch.setattr(image_service, "CLOUDFLARE_ACCOUNT_ID", "")
+    monkeypatch.setattr(image_service, "CLOUDFLARE_API_TOKEN", "")
+    error = image_module.generate_image.invoke(
         {"prompt": "x"}, config=CONFIG
     )
+    assert "All image providers failed" in error
+    assert "Cloudflare Workers AI FLUX.1-schnell [status not-configured]" in error
 
 
 def test_image_extension_detection():
@@ -516,4 +771,9 @@ def test_agent_binds_mode_tools_and_reasoning_effort(database, monkeypatch):
     github_tools, github_kwargs = binds[2]
     assert "github_ci_status" in github_tools and github_kwargs == {}
     assert binds[-1][1].startswith(graph_module.SYSTEM_PROMPT)
+    assert (
+        "You cannot generate images yourself. If an image is needed, call the "
+        "generate_image tool with a detailed, descriptive English prompt."
+        in binds[-1][1]
+    )
     assert "Current date:" in binds[-1][1]

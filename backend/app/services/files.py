@@ -1,24 +1,16 @@
 """Storage for chat attachments: documents, photos, sketches and generated images."""
 
 import base64
-from io import BytesIO
 import logging
-import random
 import re
 import shutil
-import time
 import uuid
 from pathlib import Path
-from urllib.parse import quote
 
-import httpx
 from langchain_core.messages import HumanMessage
-from PIL import Image, ImageDraw, ImageFont, UnidentifiedImageError
 from sqlalchemy import select
 
 from app.core.config import (
-    EXTERNAL_API_TIMEOUT_SECONDS,
-    IMAGE_GENERATION_URL,
     MAX_IMAGE_MB,
     MAX_UPLOAD_MB,
     VISION_MODEL,
@@ -278,157 +270,6 @@ def describe_images(images: list, question: str) -> str:
     # Reasoning models may prefix their answer with a <think> block.
     text = re.sub(r"<think>.*?(</think>|$)", "", text, flags=re.DOTALL)
     return text.strip()
-
-
-# ---------- Image generation ----------
-
-
-_IMAGE_RETRY_STATUS_CODES = {402, 429, 500, 502, 503, 504}
-_IMAGE_GENERATION_ATTEMPTS = 3
-_IMAGE_RETRY_DELAY_SECONDS = 5.25
-_IMAGE_MAX_RETRY_DELAY_SECONDS = 50.0
-
-
-def _image_retry_delay(response: httpx.Response) -> float:
-    retry_after = response.headers.get("Retry-After", "").strip()
-    if retry_after:
-        try:
-            return min(
-                max(float(retry_after) + 0.75, _IMAGE_RETRY_DELAY_SECONDS),
-                _IMAGE_MAX_RETRY_DELAY_SECONDS,
-            )
-        except ValueError:
-            pass
-
-    match = re.search(r"retry after\s+(\d+(?:\.\d+)?)s", response.text, re.I)
-    if match:
-        return min(
-            max(float(match.group(1)) + 0.75, _IMAGE_RETRY_DELAY_SECONDS),
-            _IMAGE_MAX_RETRY_DELAY_SECONDS,
-        )
-    return _IMAGE_RETRY_DELAY_SECONDS
-
-
-def generate_image_bytes(prompt: str) -> bytes:
-    url = IMAGE_GENERATION_URL.replace("{prompt}", quote(prompt, safe="")).replace(
-        "{seed}", str(random.randint(1, 2_000_000_000))
-    )
-    # The legacy Pollinations endpoint accepts these quality options. Preserve
-    # custom providers by adding them only for Pollinations URLs and only when
-    # the deployment has not already selected an explicit value.
-    if "pollinations.ai" in url:
-        quality_options = {
-            "model": "sana",
-            "enhance": "false",
-            "quality": "high",
-            "guidance_scale": "12",
-            "nologo": "true",
-        }
-        if re.search(r"\b(?:son\s+)?goku\b", prompt, re.I):
-            quality_options["negative_prompt"] = quote(
-                "photorealistic, live action, realistic human face, 3D render, "
-                "western comic, generic anime character, character redesign, "
-                "wrong costume, black gi, dark outfit, sleeveless black shirt, "
-                "cloak, brown or yellow gi, angry scowl, circular portrait "
-                "frame, moon background, blurry face, deformed "
-                "hands, extra fingers, closed eyes, reference sheet, multiple "
-                "views, collage, duplicated character, text, logo, watermark",
-                safe="",
-            )
-        elif re.search(r"\bben\s*(?:10|ten)\b", prompt, re.I):
-            quality_options["negative_prompt"] = quote(
-                "adult, woman, girl, female, feminine body, cleavage, revealing "
-                "outfit, black bodysuit, realistic person, photorealistic, 3D "
-                "render, long hair, teenager, wrong costume, diagonal stripe, "
-                "green shirt, green shirt stripe, green clothing except cargo "
-                "pants, high collar, turtleneck, long-sleeve "
-                "undershirt, missing Omnitrix, hidden left wrist, watch on right "
-                "wrist, circular frame, collage, duplicated character, text, "
-                "logo, watermark",
-                safe="",
-            )
-        for name, value in quality_options.items():
-            if f"{name}=" not in url:
-                separator = "&" if "?" in url else "?"
-                url += f"{separator}{name}={value}"
-    response = None
-    for attempt in range(_IMAGE_GENERATION_ATTEMPTS):
-        response = httpx.get(
-            url,
-            timeout=max(EXTERNAL_API_TIMEOUT_SECONDS, 120.0),
-            follow_redirects=True,
-        )
-        if (
-            response.status_code not in _IMAGE_RETRY_STATUS_CODES
-            or attempt == _IMAGE_GENERATION_ATTEMPTS - 1
-        ):
-            break
-
-        # The anonymous legacy endpoint returns the remaining per-IP cooldown
-        # in its 402 response. Waiting for that reset avoids repeated failures.
-        delay = _image_retry_delay(response)
-        response.close()
-        time.sleep(delay)
-
-    response.raise_for_status()
-    data = response.content
-
-    if not looks_like_image(data):
-        raise RuntimeError("The image service did not return an image.")
-    return add_devgpt_watermark(data)
-
-
-def add_devgpt_watermark(data: bytes) -> bytes:
-    """Add DevGPT branding while retaining the provider's own attribution."""
-    try:
-        with Image.open(BytesIO(data)) as source:
-            source_format = (source.format or "PNG").upper()
-            image = source.convert("RGBA")
-    except (UnidentifiedImageError, OSError):
-        logger.warning("Could not decode generated image for DevGPT branding")
-        return data
-
-    width, height = image.size
-    font_size = max(18, min(width, height) // 24)
-    font = ImageFont.load_default(size=font_size)
-    label = "DevGPT"
-    overlay = Image.new("RGBA", image.size, (0, 0, 0, 0))
-    draw = ImageDraw.Draw(overlay)
-    text_box = draw.textbbox((0, 0), label, font=font, stroke_width=1)
-    text_width = text_box[2] - text_box[0]
-    text_height = text_box[3] - text_box[1]
-    padding_x = max(10, font_size // 2)
-    padding_y = max(7, font_size // 3)
-    margin = max(10, font_size // 2)
-    left = margin
-    top = height - text_height - (padding_y * 2) - margin
-    right = left + text_width + (padding_x * 2)
-    bottom = height - margin
-
-    draw.rounded_rectangle(
-        (left, top, right, bottom),
-        radius=max(8, font_size // 3),
-        fill=(7, 10, 28, 205),
-        outline=(99, 102, 241, 235),
-        width=max(1, font_size // 12),
-    )
-    draw.text(
-        (left + padding_x, top + padding_y - text_box[1]),
-        label,
-        font=font,
-        fill=(255, 255, 255, 255),
-        stroke_width=1,
-        stroke_fill=(30, 33, 70, 255),
-    )
-    branded = Image.alpha_composite(image, overlay)
-    output = BytesIO()
-    if source_format in {"JPG", "JPEG"}:
-        branded.convert("RGB").save(output, format="JPEG", quality=95, optimize=True)
-    elif source_format == "WEBP":
-        branded.save(output, format="WEBP", quality=95, method=6)
-    else:
-        branded.save(output, format="PNG", optimize=True)
-    return output.getvalue()
 
 
 def image_extension(data: bytes) -> str:

@@ -45,6 +45,7 @@ services:
       - "${BACKEND_PORT:-8080}:8080"
     volumes:
       - uploads_data:/app/backend/uploads
+      - generated_images_data:/app/outputs/images
     depends_on:
       postgres:
         condition: service_healthy
@@ -52,3 +53,4 @@ services:
 volumes:
   postgres_data:
   uploads_data:
+  generated_images_data:

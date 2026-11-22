@@ -34,7 +34,8 @@ COPY --chown=devgpt:devgpt backend/ /app/backend/
 COPY --from=frontend-build --chown=devgpt:devgpt /app/frontend/dist/ /app/frontend/dist/
 COPY --chown=devgpt:devgpt main.py /app/main.py
 
-RUN mkdir -p /app/backend/uploads && chown -R devgpt:devgpt /app/backend/uploads
+RUN mkdir -p /app/backend/uploads /app/outputs/images \
+    && chown -R devgpt:devgpt /app/backend/uploads /app/outputs
 
 EXPOSE 8080
 

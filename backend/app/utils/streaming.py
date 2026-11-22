@@ -42,6 +42,9 @@ def should_stream_chunk(chunk, metadata) -> bool:
     metadata = metadata or {}
     node_name = str(metadata.get("langgraph_node", "")).lower()
 
+    if node_name == "image_prompt_rewriter":
+        return False
+
     if "tool" in node_name:
         return False
 

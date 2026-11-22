@@ -15,6 +15,8 @@ from app.core.config import (
     CORS_ORIGINS,
     DEBUG,
     ENABLE_CLEANUP_TASK,
+    IMAGE_CREDENTIAL_STATUS,
+    LOG_LEVEL,
 )
 from app.core.paths import FRONTEND_DIST_DIR
 from app.db import init_db
@@ -23,6 +25,7 @@ from app.utils.time import utc_now_naive
 
 
 logger = logging.getLogger(__name__)
+logging.getLogger("app").setLevel(getattr(logging, LOG_LEVEL, logging.INFO))
 
 
 async def _cleanup_loop() -> None:
@@ -39,6 +42,14 @@ async def _cleanup_loop() -> None:
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
+    for name, status in IMAGE_CREDENTIAL_STATUS.items():
+        logger.warning(
+            "Image provider credential name=%s set=%s length=%d usable=%s",
+            name,
+            status["set"],
+            status["length"],
+            status["usable"],
+        )
     init_db()
     cleanup_task = None
 

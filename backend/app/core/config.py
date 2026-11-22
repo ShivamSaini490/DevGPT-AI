@@ -1,4 +1,6 @@
 import os
+import logging
+import re
 from urllib.parse import quote
 
 import certifi
@@ -7,7 +9,10 @@ from dotenv import load_dotenv
 from app.core.paths import ENV_FILE
 
 
+# Load the backend environment before any integration reads credentials.
 load_dotenv(ENV_FILE)
+
+logger = logging.getLogger(__name__)
 
 os.environ["SSL_CERT_FILE"] = certifi.where()
 os.environ["REQUESTS_CA_BUNDLE"] = certifi.where()
@@ -19,10 +24,44 @@ def _as_bool(value: str | None, default: bool = False) -> bool:
     return value.strip().lower() in {"1", "true", "yes", "on"}
 
 
+def _clean_env_value(value: str | None) -> str:
+    """Trim surrounding whitespace and matching quotes from a setting."""
+    cleaned = (value or "").strip()
+    while (
+        len(cleaned) >= 2
+        and cleaned[0] == cleaned[-1]
+        and cleaned[0] in {"'", '"'}
+    ):
+        cleaned = cleaned[1:-1].strip()
+    return cleaned
+
+
+def _looks_like_placeholder(value: str) -> bool:
+    normalized = re.sub(r"[^a-z0-9]+", "_", value.strip().lower()).strip("_")
+    return (
+        normalized.startswith("your_")
+        or "replace_with" in normalized
+        or normalized in {
+            "account_id",
+            "api_token",
+            "cloudflare_account_id",
+            "cloudflare_api_token",
+            "token_here",
+        }
+    )
+
+
 def _usable_secret(name: str) -> str:
-    value = os.getenv(name, "").strip()
-    lowered = value.lower()
-    if not value or lowered.startswith("your ") or "replace-with" in lowered:
+    value = _clean_env_value(os.getenv(name))
+    if not value:
+        return ""
+    if _looks_like_placeholder(value):
+        logger.warning(
+            "Environment variable %s contains a placeholder value "
+            "(set=True length=%d usable=False)",
+            name,
+            len(value),
+        )
         return ""
     return value
 
@@ -67,15 +106,25 @@ FINNHUB_API_KEY = _usable_secret("FINNHUB_API_KEY")
 # Optional integrations used by the chat "+" menu.
 GITHUB_TOKEN = _usable_secret("GITHUB_TOKEN")
 FIGMA_TOKEN = _usable_secret("FIGMA_TOKEN")
+HF_TOKEN = _usable_secret("HF_TOKEN")
+CLOUDFLARE_ACCOUNT_ID = _usable_secret("CLOUDFLARE_ACCOUNT_ID")
+CLOUDFLARE_API_TOKEN = _usable_secret("CLOUDFLARE_API_TOKEN")
+IMAGE_CREDENTIAL_STATUS = {
+    name: {
+        "set": bool(raw_value),
+        "length": len(raw_value),
+        "usable": bool(usable_value),
+    }
+    for name, usable_value in (
+        ("CLOUDFLARE_ACCOUNT_ID", CLOUDFLARE_ACCOUNT_ID),
+        ("CLOUDFLARE_API_TOKEN", CLOUDFLARE_API_TOKEN),
+        ("HF_TOKEN", HF_TOKEN),
+    )
+    if (raw_value := _clean_env_value(os.getenv(name))) is not None
+}
 # Groq vision model used to read attached photos and sketches.
 VISION_MODEL = (
     os.getenv("VISION_MODEL") or "qwen/qwen3.8-27b"
-)
-# Text-to-image endpoint; "{prompt}" is replaced with the URL-encoded prompt.
-IMAGE_GENERATION_URL = os.getenv(
-    "IMAGE_GENERATION_URL",
-    "https://image.pollinations.ai/prompt/{prompt}"
-    "?width=1024&height=1024&nologo=true&seed={seed}",
 )
 # Groq accepts base64 images up to 4 MB.
 MAX_IMAGE_MB = int(os.getenv("MAX_IMAGE_MB", "4"))

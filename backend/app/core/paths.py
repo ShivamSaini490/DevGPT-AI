@@ -8,6 +8,7 @@ FRONTEND_DIR = PROJECT_ROOT / "frontend"
 FRONTEND_DIST_DIR = FRONTEND_DIR / "dist"
 
 UPLOADS_DIR = BACKEND_DIR / "uploads"
+GENERATED_IMAGES_DIR = PROJECT_ROOT / "outputs" / "images"
 ENV_FILE = BACKEND_DIR / ".env"
 
 UPLOADS_DIR.mkdir(exist_ok=True)

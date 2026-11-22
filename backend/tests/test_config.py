@@ -3,6 +3,20 @@ import os
 import subprocess
 import sys
 
+from app.core.config import _clean_env_value, _looks_like_placeholder
+
+
+def test_image_provider_placeholder_values_are_detected():
+    assert _looks_like_placeholder("your_account_id")
+    assert _looks_like_placeholder("your api token")
+    assert _looks_like_placeholder("replace-with-cloudflare-token")
+    assert not _looks_like_placeholder("0123456789abcdef0123456789abcdef")
+
+
+def test_image_provider_values_strip_whitespace_and_quotes():
+    assert _clean_env_value('  " account-id "  ') == "account-id"
+    assert _clean_env_value(" 'api-token' ") == "api-token"
+
 
 def test_component_database_settings_and_aliases_are_integrated():
     environment = os.environ.copy()
@@ -34,6 +48,8 @@ def test_component_database_settings_and_aliases_are_integrated():
     environment.pop("DATABASE_URL", None)
     environment.pop("LANGGRAPH_DATABASE_URL", None)
     environment.pop("LANGSMITH_PROJECT", None)
+    environment["POSTGRES_SSLMODE"] = ""
+    environment["POSTGRES_CHANNEL_BINDING"] = ""
 
     script = (
         "import json; from app.core import config; "
